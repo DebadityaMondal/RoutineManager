@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2><i class="bi bi-person-circle"></i> My Profile</h2>
+            <a href="/" class="btn btn-outline-primary">
+                <i class="bi bi-arrow-left"></i> Back
+            </a>
+        </div>
+
+        <!-- Edit Profile -->
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <i class="bi bi-pencil-square"></i> Edit Profile
+            </div>
+            <div class="card-body">
+                <form method="post" action="/profile">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label for="username" class="form-label">Username</label>
+                            <input type="text" name="username" id="username" class="form-control" 
+                                   value="{{ current_user.username }}" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="email" class="form-label">Email</label>
+                            <input type="email" name="email" id="email" class="form-control" 
+                                   value="{{ current_user.email }}" required>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary mt-3">
+                        <i class="bi bi-check-lg"></i> Update Profile
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Change Password -->
+        <div class="card">
+            <div class="card-header bg-danger text-white">
+                <i class="bi bi-shield-lock"></i> Change Password
+            </div>
+            <div class="card-body">
+                <form method="post" action="/change_password">
+                    <div class="mb-3">
+                        <label for="current_password" class="form-label">Current Password</label>
+                        <input type="password" name="current_password" id="current_password" 
+                               class="form-control" required>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label for="new_password" class="form-label">New Password</label>
+                            <input type="password" name="new_password" id="new_password" 
+                                   class="form-control" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="confirm_password" class="form-label">Confirm New Password</label>
+                            <input type="password" name="confirm_password" id="confirm_password" 
+                                   class="form-control" required>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-danger mt-3">
+                        <i class="bi bi-key"></i> Change Password
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Account Info -->
+        <div class="card">
+            <div class="card-header bg-dark text-white">
+                <i class="bi bi-info-circle"></i> Account Information
+            </div>
+            <div class="card-body">
+                <table class="table table-sm mb-0">
+                    <tbody>
+                        <tr><td><strong>Username</strong></td><td>{{ current_user.username }}</td></tr>
+                        <tr><td><strong>Email</strong></td><td>{{ current_user.email }}</td></tr>
+                        <tr><td><strong>User ID</strong></td><td>{{ current_user.id }}</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

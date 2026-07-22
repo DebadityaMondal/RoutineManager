@@ -1,0 +1,28 @@
+{
+  "subjects": ["Math", "English", "Science", "History", "Geography", "Computer", "Art"],
+  "teachers": [
+    {"name": "Mr. Sharma", "subjects": ["Math"]},
+    {"name": "Ms. Gupta", "subjects": ["English"]},
+    {"name": "Mr. Roy", "subjects": ["Science"]},
+    {"name": "Ms. Das", "subjects": ["History", "Geography"]},
+    {"name": "Mr. Khan", "subjects": ["Computer"]},
+    {"name": "Ms. Sen", "subjects": ["Art"]},
+    {"name": "Mr. Bose", "subjects": ["Math", "Science"]}
+  ],
+  "classes": [
+    {"name": "Class 6", "sections": ["A", "B"]},
+    {"name": "Class 7", "sections": ["A", "B"]},
+    {"name": "Class 8", "sections": ["A"]}
+  ],
+  "periods_per_day": 6,
+  "days": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
+  "day_periods": {
+    "Monday": 7,
+    "Tuesday": 6,
+    "Wednesday": 6,
+    "Thursday": 7,
+    "Friday": 6,
+    "Saturday": 4
+  },
+  "first_period_subjects": ["Math", "English", "Science"]
+}

@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-grid-3x3"></i> Class-wise Subject Periods</h2>
+    <div>
+        <a href="/settings" class="btn btn-outline-secondary me-2">
+            <i class="bi bi-gear"></i> Settings
+        </a>
+        <a href="/" class="btn btn-outline-primary">
+            <i class="bi bi-arrow-left"></i> Back
+        </a>
+    </div>
+</div>
+
+<div class="alert alert-info">
+    <i class="bi bi-info-circle"></i>
+    <strong>Optional:</strong> Set how many periods per week each class should have for each subject.
+    Select <strong>N/A</strong> to mark a subject as not applicable for a class (it will be excluded from the routine).
+    Leave as <strong>Auto</strong> for even distribution.
+</div>
+
+{% if not classes or not subjects %}
+<div class="alert alert-warning">
+    <i class="bi bi-exclamation-triangle"></i>
+    Please add subjects and classes first on the <a href="/">Home page</a>.
+</div>
+{% else %}
+<div class="card">
+    <div class="card-body p-0">
+        <form method="post" action="/class_subject_periods">
+            <div class="table-responsive">
+                <table class="table table-bordered table-sm mb-0">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Class</th>
+                            {% for subj in subjects %}
+                            <th class="text-center">{{ subj.name }}</th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for cls in classes %}
+                        <tr>
+                            <td class="fw-bold">{{ cls.full_name }}</td>
+                            {% for subj in subjects %}
+                            {% set current_val = csp_map.get(cls.full_name, {}).get(subj.name, '') %}
+                            <td class="text-center">
+                                <select name="csp_{{ cls.full_name }}_{{ subj.name }}"
+                                        class="form-select form-select-sm text-center csp-select"
+                                        style="width: 75px; margin: auto; font-size: 0.75rem;">
+                                    <option value="" {% if current_val == '' %}selected{% endif %}>Auto</option>
+                                    <option value="-1" {% if current_val == -1 %}selected{% endif %} class="text-danger">N/A</option>
+                                    {% for n in range(1, 8) %}
+                                    <option value="{{ n }}" {% if current_val == n %}selected{% endif %}>{{ n }}</option>
+                                    {% endfor %}
+                                </select>
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="card-footer">
+                <button type="submit" class="btn btn-primary">
+                    <i class="bi bi-check-lg"></i> Save Configuration
+                </button>
+                <span class="ms-3">
+                    <span class="badge bg-secondary">Auto</span> = even distribution
+                    <span class="badge bg-danger ms-2">N/A</span> = subject not applicable for this class
+                    <span class="badge bg-primary ms-2">1-7</span> = fixed periods/week
+                </span>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,372 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2><i class="bi bi-gear"></i> Schedule Settings & Configuration</h2>
+            <a href="/" class="btn btn-outline-primary">
+                <i class="bi bi-arrow-left"></i> Back
+            </a>
+        </div>
+
+        <div class="card">
+            <div class="card-header bg-secondary text-white">
+                <i class="bi bi-calendar3"></i> Schedule Configuration
+            </div>
+            <div class="card-body">
+                <form action="/settings" method="post">
+                    <!-- Days -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Working Days (comma-separated)</label>
+                        <input type="text" name="days" class="form-control" 
+                               value="{{ settings.days_list | join(', ') }}">
+                    </div>
+
+                    <!-- Default Periods -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Default Periods Per Day</label>
+                        <input type="number" name="periods_per_day" class="form-control" 
+                               value="{{ settings.periods_per_day }}" min="1" max="12">
+                        <small class="text-muted">Applied when a day-specific value is not set below.</small>
+                    </div>
+
+                    <hr>
+
+                    <!-- Day-wise Period Count -->
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">Day-wise Period Count</label>
+                        <small class="text-muted d-block mb-2">
+                            Customize number of periods for each day. Leave blank to use the default value above.
+                            Days with more than 4 periods will automatically include a Tiffin break.
+                        </small>
+                        <div class="row g-2">
+                            {% for day in settings.days_list %}
+                            <div class="col-md-4">
+                                <div class="input-group">
+                                    <span class="input-group-text" style="min-width: 110px;">{{ day }}</span>
+                                    <input type="number" name="periods_{{ day }}" class="form-control" 
+                                           value="{{ settings.day_periods.get(day, '') }}" 
+                                           min="1" max="12" placeholder="{{ settings.periods_per_day }}">
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <hr>
+
+                    <!-- First Period Preference -->
+                    {% if subjects %}
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">First Period Subject Preference</label>
+                        <small class="text-muted d-block mb-2">
+                            Select subjects that should be prioritized for the 1st period of each day.
+                        </small>
+                        <div class="d-flex flex-wrap gap-3">
+                            {% for subject in subjects %}
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="first_period_subjects"
+                                       value="{{ subject.name }}" id="fp_{{ subject.id }}"
+                                       {% if subject.name in settings.first_period_subjects %}checked{% endif %}>
+                                <label class="form-check-label" for="fp_{{ subject.id }}">{{ subject.name }}</label>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% else %}
+                    <p class="text-muted">Add subjects first to set first-period preferences.</p>
+                    {% endif %}
+
+                    <hr>
+
+                    <!-- Class Teacher Toggle -->
+                    <div class="mb-4">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" name="enable_class_teacher"
+                                   id="enableCT" {% if settings.enable_class_teacher %}checked{% endif %}>
+                            <label class="form-check-label fw-bold" for="enableCT">
+                                Enable Class Teacher First Period
+                            </label>
+                        </div>
+                        <small class="text-muted">When enabled, assign a class teacher below who takes the 1st period every day.</small>
+                    </div>
+
+                    <hr>
+
+                    <!-- Teacher Workload Constraints (Soft/Flexible) -->
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">Teacher Workload (Flexible)</label>
+                        <small class="text-muted d-block mb-2">
+                            These are soft constraints. The generator will try to respect them, but if there aren't enough teachers, they will be relaxed automatically.
+                        </small>
+
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Max periods per teacher per day</label>
+                                <input type="number" name="max_teacher_periods_per_day" class="form-control"
+                                       value="{{ settings.max_teacher_periods_per_day or '' }}"
+                                       min="0" max="12" placeholder="No limit">
+                                <small class="text-muted">Leave blank or 0 for no limit.</small>
+                            </div>
+                            <div class="col-md-6 d-flex align-items-center">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" name="avoid_consecutive"
+                                           id="avoidConsec" {% if settings.avoid_consecutive %}checked{% endif %}>
+                                    <label class="form-check-label" for="avoidConsec">
+                                        Avoid consecutive periods by same teacher
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr>
+
+                    <!-- Tiffin Break -->
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">Tiffin Break (Optional)</label>
+                        <small class="text-muted d-block mb-2">
+                            Insert a tiffin/lunch break after a specific period. Only applies on days with more periods than the selected value. Set to "Disabled" for no break.
+                        </small>
+                        <div class="row">
+                            <div class="col-md-5">
+                                <select name="tiffin_after_period" class="form-select">
+                                    <option value="0" {% if not settings.tiffin_after_period %}selected{% endif %}>Disabled</option>
+                                    {% for n in range(2, settings.periods_per_day + 1) %}
+                                    <option value="{{ n }}" {% if settings.tiffin_after_period == n %}selected{% endif %}>After Period {{ n }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-7 d-flex align-items-center">
+                                <small class="text-muted">
+                                    {% if settings.tiffin_after_period %}
+                                    Currently: Break after Period {{ settings.tiffin_after_period }}
+                                    {% else %}
+                                    Currently: Disabled
+                                    {% endif %}
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-secondary w-100">
+                        <i class="bi bi-check-lg"></i> Save Settings
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Class Teacher Configuration -->
+        <div class="card">
+            <div class="card-header bg-purple text-white" style="background: #6f42c1;">
+                <i class="bi bi-person-check"></i> Class Teacher (Optional)
+            </div>
+            <div class="card-body">
+                <div class="form-check form-switch mb-3">
+                    <input class="form-check-input" type="checkbox" id="ctToggleDisplay"
+                           {% if settings.enable_class_teacher %}checked{% endif %}
+                           onchange="document.getElementById('ctSection').classList.toggle('d-none')">
+                    <label class="form-check-label fw-bold" for="ctToggleDisplay">
+                        Enable Class Teacher for First Period
+                    </label>
+                </div>
+                <small class="text-muted d-block mb-3">
+                    When enabled, the assigned class teacher will take the first period every day with their specified subject.
+                </small>
+
+                <div id="ctSection" class="{% if not settings.enable_class_teacher %}d-none{% endif %}">
+                    {% if classes and teachers and subjects %}
+                    <form method="post" action="/save_class_teachers">
+                        <table class="table table-sm table-bordered">
+                            <thead class="table-light">
+                                <tr><th>Class</th><th>Class Teacher</th><th>Subject (of selected teacher)</th></tr>
+                            </thead>
+                            <tbody>
+                                {% for cls in classes %}
+                                <tr>
+                                    <td class="align-middle fw-bold">{{ cls.full_name }}</td>
+                                    <td>
+                                        <select name="ct_teacher_{{ cls.full_name }}" 
+                                                class="form-select form-select-sm ct-teacher-select"
+                                                data-class="{{ cls.full_name }}">
+                                            <option value="">-- None --</option>
+                                            {% for t in teachers %}
+                                            <option value="{{ t.name }}" {% if ct_map.get(cls.full_name, {}).get('teacher') == t.name %}selected{% endif %}>{{ t.name }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </td>
+                                    <td>
+                                        <select name="ct_subject_{{ cls.full_name }}" 
+                                                class="form-select form-select-sm ct-subject-select"
+                                                data-class="{{ cls.full_name }}">
+                                            <option value="">-- Select Teacher First --</option>
+                                        </select>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="bi bi-save"></i> Save Class Teacher Assignments
+                        </button>
+                    </form>
+                    {% else %}
+                    <p class="text-muted">Add classes, teachers, and subjects first.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Current Configuration Summary -->
+        <div class="card">
+            <div class="card-header bg-dark text-white">
+                <i class="bi bi-info-circle"></i> Current Configuration
+            </div>
+            <div class="card-body">
+                <table class="table table-sm mb-0">
+                    <tbody>
+                        <tr>
+                            <td><strong>Working Days</strong></td>
+                            <td>{{ settings.days_list | join(', ') }}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Default Periods</strong></td>
+                            <td>{{ settings.periods_per_day }}</td>
+                        </tr>
+                        {% for day in settings.days_list %}
+                        <tr>
+                            <td>{{ day }}</td>
+                            <td>
+                                {{ settings.get_periods_for_day(day) }} periods
+                                {% if settings.has_tiffin(day) %}
+                                    <span class="badge bg-warning text-dark">+ Tiffin</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        {% if settings.first_period_subjects %}
+                        <tr>
+                            <td><strong>1st Period Preference</strong></td>
+                            <td>{{ settings.first_period_subjects | join(', ') }}</td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Link to class-subject period config -->
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <i class="bi bi-grid-3x3"></i> Advanced: Class-wise Subject Periods
+            </div>
+            <div class="card-body">
+                <p class="text-muted mb-2">
+                    Optionally control how many periods per week each class gets for each subject.
+                </p>
+                <a href="/class_subject_periods" class="btn btn-info text-white w-100">
+                    <i class="bi bi-grid-3x3"></i> Configure Class-wise Periods
+                </a>
+            </div>
+        </div>
+
+        <!-- Danger Zone: Clear All Data -->
+        <div class="card border-danger">
+            <div class="card-header bg-danger text-white">
+                <i class="bi bi-exclamation-triangle"></i> Danger Zone
+            </div>
+            <div class="card-body">
+                <p class="text-muted mb-2">
+                    This will permanently delete all your data including subjects, teachers, classes, routines, and settings.
+                </p>
+                <button type="button" class="btn btn-outline-danger w-100" data-bs-toggle="modal" data-bs-target="#clearAllModal">
+                    <i class="bi bi-trash"></i> Clear All Data
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Clear All Confirmation Modal -->
+<div class="modal fade" id="clearAllModal" tabindex="-1" aria-labelledby="clearAllModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title" id="clearAllModalLabel">
+                    <i class="bi bi-exclamation-triangle"></i> Warning
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="text-center mb-3">
+                    <i class="bi bi-trash" style="font-size: 3rem; color: #dc3545;"></i>
+                </div>
+                <p class="text-center fw-bold">Are you sure you want to delete all data?</p>
+                <p class="text-center text-muted">
+                    This action will permanently remove all your subjects, teachers, classes, generated routines, 
+                    and settings. This cannot be undone.
+                </p>
+            </div>
+            <div class="modal-footer justify-content-center">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="bi bi-x-lg"></i> Cancel
+                </button>
+                <a href="/clear" class="btn btn-danger">
+                    <i class="bi bi-trash"></i> Delete All Data
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Teacher -> Subjects mapping
+    const teacherSubjects = {{ teacher_subjects_json | safe }};
+    // Existing saved values
+    const savedValues = {{ ct_map_json | safe }};
+
+    function updateSubjectDropdown(teacherSelect) {
+        const className = teacherSelect.dataset.class;
+        const subjectSelect = document.querySelector(`.ct-subject-select[data-class="${className}"]`);
+        const selectedTeacher = teacherSelect.value;
+
+        // Clear subject options
+        subjectSelect.innerHTML = '';
+
+        if (!selectedTeacher) {
+            subjectSelect.innerHTML = '<option value="">-- Select Teacher First --</option>';
+            return;
+        }
+
+        const subjects = teacherSubjects[selectedTeacher] || [];
+        if (subjects.length === 0) {
+            subjectSelect.innerHTML = '<option value="">No subjects for this teacher</option>';
+            return;
+        }
+
+        subjectSelect.innerHTML = '<option value="">-- Select Subject --</option>';
+        subjects.forEach(function(s) {
+            const opt = document.createElement('option');
+            opt.value = s;
+            opt.textContent = s;
+            // Pre-select if saved
+            if (savedValues[className] && savedValues[className].subject === s) {
+                opt.selected = true;
+            }
+            subjectSelect.appendChild(opt);
+        });
+    }
+
+    // Bind change events
+    document.querySelectorAll('.ct-teacher-select').forEach(function(sel) {
+        sel.addEventListener('change', function() { updateSubjectDropdown(this); });
+        // Initialize on page load
+        updateSubjectDropdown(sel);
+    });
+});
+</script>
+{% endblock %}

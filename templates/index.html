@@ -1,0 +1,477 @@
+{% extends "base.html" %}
+{% set active_tab = request.args.get('tab', 'routine') %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8">
+        <!-- Tabs -->
+        <ul class="nav nav-tabs mb-3" id="mainTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link {% if active_tab == 'routine' %}active{% endif %}" id="routine-tab" 
+                        data-bs-toggle="tab" data-bs-target="#routinePane" type="button" role="tab">
+                    <i class="bi bi-calendar-week"></i> Routine
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link {% if active_tab == 'manual' %}active{% endif %}" id="manual-tab" 
+                        data-bs-toggle="tab" data-bs-target="#manual" type="button" role="tab">
+                    <i class="bi bi-pencil-square"></i> Data Entry
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link {% if active_tab == 'upload' %}active{% endif %}" id="upload-tab" 
+                        data-bs-toggle="tab" data-bs-target="#upload" type="button" role="tab">
+                    <i class="bi bi-upload"></i> Upload
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link {% if active_tab == 'substitute' %}active{% endif %}" id="sub-tab" 
+                        data-bs-toggle="tab" data-bs-target="#substitutePane" type="button" role="tab">
+                    <i class="bi bi-person-exclamation"></i> Substitutes
+                </button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="mainTabsContent">
+
+            <!-- ═══ TAB 1: ROUTINE ═══ -->
+            <div class="tab-pane fade {% if active_tab == 'routine' %}show active{% endif %}" id="routinePane" role="tabpanel">
+                {% if routine %}
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="mb-0"><i class="bi bi-calendar-check"></i> Class-wise Routine</h5>
+                    <div>
+                        <button onclick="window.print()" class="btn btn-outline-secondary btn-sm me-2">
+                            <i class="bi bi-printer"></i> Print
+                        </button>
+                        <button id="editRoutineBtn" class="btn btn-outline-warning btn-sm me-2">
+                            <i class="bi bi-pencil"></i> Edit
+                        </button>
+                        <button id="saveRoutineBtn" class="btn btn-primary btn-sm d-none">
+                            <i class="bi bi-save"></i> Save
+                        </button>
+                        <button id="cancelEditBtn" class="btn btn-outline-secondary btn-sm d-none">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+
+                {% for class_name, schedule in routine.items() %}
+                <div class="card mb-3">
+                    <div class="card-header bg-dark text-white py-2">
+                        <strong><i class="bi bi-mortarboard"></i> {{ class_name }}</strong>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-sm mb-0 routine-edit-table" data-class="{{ class_name }}">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th style="width:80px">Day</th>
+                                        {% for i in range(1, max_periods + 1) %}
+                                            {% if tiffin_after > 0 and i == tiffin_after + 1 %}<th class="tiffin-col">Tiffin</th>{% endif %}
+                                            <th class="text-center">P{{ i }}</th>
+                                        {% endfor %}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for day in settings.days_list %}
+                                    {% set dinfo = day_info[day] %}
+                                    <tr>
+                                        <td class="fw-bold align-middle">{{ day[:3] }}</td>
+                                        {% set periods = schedule.get(day, []) %}
+                                        {% for i in range(1, max_periods + 1) %}
+                                            {% if tiffin_after > 0 and i == tiffin_after + 1 %}
+                                            <td class="tiffin-cell align-middle text-center">
+                                                {% if dinfo.has_tiffin %}🍱{% else %}—{% endif %}
+                                            </td>
+                                            {% endif %}
+                                            {% if i <= dinfo.periods %}
+                                                {% set p = periods[i-1] if (i-1) < periods|length else None %}
+                                                <td class="p-1 period-cell-data">
+                                                    <!-- Read-only view -->
+                                                    <div class="routine-view">
+                                                        {% if p %}
+                                                        <div class="period-subject">{{ p.subject }}</div>
+                                                        <div class="period-teacher">{{ p.teacher }}</div>
+                                                        {% else %}<span class="text-muted">—</span>{% endif %}
+                                                    </div>
+                                                    <!-- Edit view (hidden by default) -->
+                                                    <div class="routine-edit d-none">
+                                                        <select class="form-select form-select-sm mb-1 subject-select"
+                                                                data-class="{{ class_name }}" data-day="{{ day }}" data-period="{{ i-1 }}">
+                                                            <option value="">--</option>
+                                                            {% for s in subjects %}
+                                                            <option value="{{ s.name }}" {% if p and p.subject == s.name %}selected{% endif %}>{{ s.name }}</option>
+                                                            {% endfor %}
+                                                        </select>
+                                                        <select class="form-select form-select-sm teacher-select"
+                                                                data-class="{{ class_name }}" data-day="{{ day }}" data-period="{{ i-1 }}">
+                                                            <option value="">--</option>
+                                                            {% for t in teachers %}
+                                                            <option value="{{ t.name }}" {% if p and p.teacher == t.name %}selected{% endif %}>{{ t.name }}</option>
+                                                            {% endfor %}
+                                                        </select>
+                                                    </div>
+                                                </td>
+                                            {% else %}
+                                                <td class="text-center text-muted align-middle">—</td>
+                                            {% endif %}
+                                        {% endfor %}
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+
+                {% else %}
+                <div class="card">
+                    <div class="card-body text-center py-5">
+                        <i class="bi bi-calendar-x" style="font-size: 3rem; color: #ccc;"></i>
+                        <p class="text-muted mt-3">No routine generated yet. Add data and generate one.</p>
+                        <a href="/generate" class="btn btn-primary"><i class="bi bi-magic"></i> Generate Routine</a>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- ═══ TAB 2: DATA ENTRY ═══ -->
+            <div class="tab-pane fade {% if active_tab == 'manual' %}show active{% endif %}" id="manual" role="tabpanel">
+                <div class="card">
+                    <div class="card-header bg-primary text-white"><i class="bi bi-book"></i> Subjects</div>
+                    <div class="card-body">
+                        <form action="/add_subject" method="post" class="d-flex gap-2 mb-3">
+                            <input type="text" name="subject" class="form-control" placeholder="Enter subject name" required>
+                            <button type="submit" class="btn btn-primary">Add</button>
+                        </form>
+                        <div>
+                            {% for subject in subjects %}
+                            <span class="badge bg-primary badge-subject">{{ subject.name }}
+                                <a href="/edit_subject/{{ subject.id }}" class="text-white ms-1" title="Edit"><i class="bi bi-pencil"></i></a>
+                                <a href="/delete_subject/{{ subject.id }}" class="text-white ms-1" title="Delete"><i class="bi bi-x-circle"></i></a>
+                            </span>
+                            {% endfor %}
+                            {% if not subjects %}<span class="text-muted">No subjects added yet.</span>{% endif %}
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header bg-success text-white"><i class="bi bi-person-badge"></i> Teachers</div>
+                    <div class="card-body">
+                        {% if subjects %}
+                        <form action="/add_teacher" method="post" class="mb-3">
+                            <div class="row g-2 align-items-end">
+                                <div class="col-md-3"><label class="form-label">Name</label><input type="text" name="teacher_name" class="form-control" placeholder="e.g., Mr. Sharma" required></div>
+                                <div class="col-md-2"><label class="form-label">Short Name</label><input type="text" name="teacher_short_name" class="form-control" placeholder="e.g., SHR" maxlength="10"></div>
+                                <div class="col-md-5"><label class="form-label">Subjects</label>
+                                    <div class="dropdown">
+                                        <button class="btn btn-outline-secondary btn-sm dropdown-toggle w-100 text-start" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false">
+                                            Select Subjects
+                                        </button>
+                                        <div class="dropdown-menu p-2" style="min-width: 200px; max-height: 250px; overflow-y: auto;">
+                                            {% for subject in subjects %}
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" name="teacher_subjects" value="{{ subject.name }}" id="ts_{{ subject.id }}">
+                                                <label class="form-check-label" for="ts_{{ subject.id }}">{{ subject.name }}</label>
+                                            </div>
+                                            {% endfor %}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-2"><button type="submit" class="btn btn-success w-100">Add</button></div>
+                            </div>
+                        </form>
+                        {% else %}<p class="text-muted">Add subjects first.</p>{% endif %}
+                        {% if teachers %}
+                        <table class="table table-sm table-hover"><thead><tr><th>Name</th><th>Short</th><th>Subjects</th><th>Actions</th></tr></thead><tbody>
+                            {% for teacher in teachers %}<tr><td>{{ teacher.name }}</td><td><small class="text-muted">{{ teacher.short_name or '—' }}</small></td><td>{{ teacher.subject_names | join(', ') }}</td><td><a href="/edit_teacher/{{ teacher.id }}" class="btn btn-sm btn-outline-primary me-1"><i class="bi bi-pencil"></i></a><a href="/delete_teacher/{{ teacher.id }}" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></a></td></tr>{% endfor %}
+                        </tbody></table>{% endif %}
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header bg-warning text-dark"><i class="bi bi-building"></i> Classes & Sections</div>
+                    <div class="card-body">
+                        <form action="/add_class" method="post" class="mb-3">
+                            <div class="row g-2 align-items-end">
+                                <div class="col-md-5"><label class="form-label">Class Name</label><input type="text" name="class_name" class="form-control" placeholder="e.g., Class 6" required></div>
+                                <div class="col-md-5"><label class="form-label">Sections</label><input type="text" name="sections" class="form-control" placeholder="e.g., A, B, C" required></div>
+                                <div class="col-md-2"><button type="submit" class="btn btn-warning w-100">Add</button></div>
+                            </div>
+                        </form>
+                        {% if classes %}
+                        <table class="table table-sm table-hover"><thead><tr><th>Class</th><th>Section</th><th></th></tr></thead><tbody>
+                            {% for cls in classes %}<tr><td>{{ cls.class_name }}</td><td>{{ cls.section }}</td><td><a href="/delete_class/{{ cls.id }}" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></a></td></tr>{% endfor %}
+                        </tbody></table>{% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══ TAB 3: UPLOAD ═══ -->
+            <div class="tab-pane fade {% if active_tab == 'upload' %}show active{% endif %}" id="upload" role="tabpanel">
+                <div class="card">
+                    <div class="card-header bg-info text-white"><i class="bi bi-filetype-json"></i> Upload JSON</div>
+                    <div class="card-body">
+                        <form action="/upload" method="post" enctype="multipart/form-data" class="d-flex align-items-center gap-3">
+                            <input type="file" name="json_file" accept=".json" class="form-control" required>
+                            <button type="submit" class="btn btn-info text-white">Upload</button>
+                        </form>
+                        <small class="text-muted mt-2 d-block">Replaces all existing data. <a href="#" data-bs-toggle="modal" data-bs-target="#formatModal">See format</a></small>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header bg-success text-white"><i class="bi bi-file-earmark-spreadsheet"></i> Upload Excel / CSV</div>
+                    <div class="card-body">
+                        <form action="/upload_excel" method="post" enctype="multipart/form-data" class="d-flex align-items-center gap-3">
+                            <input type="file" name="excel_file" accept=".xlsx,.xls,.csv" class="form-control" required>
+                            <button type="submit" class="btn btn-success">Upload</button>
+                        </form>
+                        <div class="mt-3">
+                            <div class="row">
+                                <div class="col-md-6"><div class="border rounded p-2 bg-light"><small class="fw-bold">Sheet 1: Teacher-Subject</small><table class="table table-sm table-bordered mt-1 mb-0"><thead><tr><th>Teacher</th><th>Subjects</th></tr></thead><tbody><tr><td>Mr. Sharma</td><td>Math, Science</td></tr></tbody></table></div></div>
+                                <div class="col-md-6"><div class="border rounded p-2 bg-light"><small class="fw-bold">Sheet 2: Class-Section</small><table class="table table-sm table-bordered mt-1 mb-0"><thead><tr><th>Class</th><th>Sections</th></tr></thead><tbody><tr><td>Class 6</td><td>A, B</td></tr></tbody></table></div></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══ TAB 4: SUBSTITUTES ═══ -->
+            <div class="tab-pane fade {% if active_tab == 'substitute' %}show active{% endif %}" id="substitutePane" role="tabpanel">
+                {% if routine %}
+                <div class="card mb-3">
+                    <div class="card-header bg-danger text-white">
+                        <i class="bi bi-person-x"></i> Find Substitute Teachers
+                    </div>
+                    <div class="card-body">
+                        <form method="post" action="/substitute">
+                            <div class="row g-3 align-items-end">
+                                <div class="col-md-5">
+                                    <label class="form-label">Absent Teacher</label>
+                                    <select name="absent_teacher" class="form-select" required>
+                                        <option value="">-- Select Teacher --</option>
+                                        {% for name in teacher_names %}
+                                        <option value="{{ name }}" {% if name == sub_teacher %}selected{% endif %}>{{ name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Day</label>
+                                    <select name="day" class="form-select" required>
+                                        <option value="">-- Select Day --</option>
+                                        {% for day in settings.days_list %}
+                                        <option value="{{ day }}" {% if day == sub_day %}selected{% endif %}>{{ day }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <button type="submit" class="btn btn-danger w-100"><i class="bi bi-search"></i> Find</button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                {% if sub_result %}
+                <div class="card">
+                    <div class="card-header bg-dark text-white">
+                        <i class="bi bi-clipboard-check"></i> Substitutes for <strong>{{ sub_teacher }}</strong> on <strong>{{ sub_day }}</strong>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-sm mb-0">
+                                <thead class="table-dark">
+                                    <tr><th style="width:60px">Period</th><th>Absent From</th><th>Recommended (Same Subject)</th><th>Other Free</th></tr>
+                                </thead>
+                                <tbody>
+                                    {% for slot in sub_result %}
+                                    <tr>
+                                        <td class="text-center fw-bold">{{ slot.period }}</td>
+                                        <td>{% if slot.absent_classes %}{% for cls in slot.absent_classes %}<span class="badge bg-warning text-dark">{{ cls.class }} — {{ cls.subject }}</span> {% endfor %}{% else %}<span class="text-muted">Not assigned</span>{% endif %}</td>
+                                        <td>{% if slot.substitutes %}{% for sub in slot.substitutes %}<div><strong class="text-success">{{ sub.name }}</strong> <small class="text-muted">({{ sub.can_teach | join(', ') }})</small></div>{% endfor %}{% else %}<span class="text-danger"><i class="bi bi-exclamation-triangle"></i> None</span>{% endif %}</td>
+                                        <td>{% if slot.free_others %}{% for other in slot.free_others %}<div><span class="text-muted">{{ other.name }}</span> <small>({{ other.can_teach | join(', ') }})</small></div>{% endfor %}{% else %}—{% endif %}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="alert alert-info mt-2">
+                    <small><i class="bi bi-info-circle"></i> <strong>Recommended</strong> = free + can teach same subject. <strong>Other Free</strong> = available but teaches different subjects.</small>
+                </div>
+                {% endif %}
+
+                {% else %}
+                <div class="card">
+                    <div class="card-body text-center py-5">
+                        <i class="bi bi-person-exclamation" style="font-size: 3rem; color: #ccc;"></i>
+                        <p class="text-muted mt-3">Generate a routine first to use the substitute finder.</p>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+
+        </div><!-- end tab-content -->
+    </div>
+
+    <!-- Right Column -->
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header bg-dark text-white"><i class="bi bi-bar-chart"></i> Summary</div>
+            <div class="card-body">
+                <ul class="list-unstyled mb-0">
+                    <li><strong>{{ subjects | length }}</strong> Subjects</li>
+                    <li><strong>{{ teachers | length }}</strong> Teachers</li>
+                    <li><strong>{{ classes | length }}</strong> Class-Sections</li>
+                    <li><strong>{{ settings.periods_per_day }}</strong> Periods/Day</li>
+                    <li><strong>{{ settings.days_list | length }}</strong> Days/Week</li>
+                </ul>
+                <hr>
+                <a href="/settings" class="btn btn-sm btn-outline-secondary w-100 mb-2"><i class="bi bi-gear"></i> Schedule Settings</a>
+                <a href="/class_subject_periods" class="btn btn-sm btn-outline-secondary w-100"><i class="bi bi-grid-3x3"></i> Class-wise Periods</a>
+            </div>
+        </div>
+        <div class="text-center">
+            <a href="/generate" class="btn btn-generate w-100"><i class="bi bi-magic"></i> Generate Routine</a>
+        </div>
+        <div class="card mt-3">
+            <div class="card-body text-center">
+                <small class="text-muted"><i class="bi bi-info-circle"></i>
+                    {% if tiffin_after > 0 %}
+                    Tiffin break after Period {{ tiffin_after }} on days with more than {{ tiffin_after }} periods.
+                    {% else %}
+                    Tiffin break is disabled. Enable it in <a href="/settings">Settings</a>.
+                    {% endif %}
+                </small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modals -->
+<div class="modal fade" id="errorModal" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content">
+    <div class="modal-header bg-danger text-white"><h5 class="modal-title"><i class="bi bi-exclamation-triangle"></i> Validation Errors</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body"><p>Fix the following before saving:</p><ul id="errorList" class="text-danger"></ul></div>
+    <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button></div>
+</div></div></div>
+
+<div class="modal fade" id="successModal" tabindex="-1"><div class="modal-dialog modal-sm"><div class="modal-content">
+    <div class="modal-header bg-success text-white"><h5 class="modal-title"><i class="bi bi-check-circle"></i> Success</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body text-center"><p id="successMessage"></p></div>
+</div></div></div>
+
+<div class="modal fade" id="formatModal" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title">JSON Format</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body"><pre><code>{"subjects":["Math","English"],"teachers":[{"name":"Mr. A","subjects":["Math"]}],"classes":[{"name":"Class 6","sections":["A","B"]}],"periods_per_day":6,"days":["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"]}</code></pre></div>
+</div></div></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // ─── Edit/View Toggle ───
+    const editBtn = document.getElementById('editRoutineBtn');
+    const saveBtn = document.getElementById('saveRoutineBtn');
+    const cancelBtn = document.getElementById('cancelEditBtn');
+    
+    if (editBtn) {
+        editBtn.addEventListener('click', function() {
+            document.querySelectorAll('.routine-view').forEach(el => el.classList.add('d-none'));
+            document.querySelectorAll('.routine-edit').forEach(el => el.classList.remove('d-none'));
+            editBtn.classList.add('d-none');
+            saveBtn.classList.remove('d-none');
+            cancelBtn.classList.remove('d-none');
+        });
+    }
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', function() {
+            document.querySelectorAll('.routine-view').forEach(el => el.classList.remove('d-none'));
+            document.querySelectorAll('.routine-edit').forEach(el => el.classList.add('d-none'));
+            editBtn.classList.remove('d-none');
+            saveBtn.classList.add('d-none');
+            cancelBtn.classList.add('d-none');
+        });
+    }
+
+    // ─── Save Routine ───
+    if (saveBtn) {
+        saveBtn.addEventListener('click', function() {
+            const routine = {};
+            document.querySelectorAll('.routine-edit-table').forEach(function(table) {
+                const className = table.dataset.class;
+                routine[className] = {};
+                table.querySelectorAll('tbody tr').forEach(function(row) {
+                    const day = row.querySelector('td').textContent.trim();
+                    // Map abbreviation back to full day name
+                    const subjectSelects = row.querySelectorAll('.subject-select');
+                    const teacherSelects = row.querySelectorAll('.teacher-select');
+                    const dayFull = subjectSelects.length > 0 ? subjectSelects[0].dataset.day : day;
+                    routine[className][dayFull] = [];
+                    for (let i = 0; i < subjectSelects.length; i++) {
+                        const subj = subjectSelects[i].value;
+                        const tchr = teacherSelects[i].value;
+                        if (subj || tchr) {
+                            routine[className][dayFull].push({subject: subj, teacher: tchr});
+                        } else {
+                            routine[className][dayFull].push(null);
+                        }
+                    }
+                });
+            });
+
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Saving...';
+
+            fetch('/save_routine', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({routine: routine})
+            })
+            .then(r => r.json().then(d => ({status: r.status, body: d})))
+            .then(({status, body}) => {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = '<i class="bi bi-save"></i> Save';
+                if (body.success) {
+                    document.getElementById('successMessage').textContent = body.message;
+                    new bootstrap.Modal(document.getElementById('successModal')).show();
+                    // Switch back to view mode after short delay
+                    setTimeout(() => location.reload(), 1200);
+                } else {
+                    const errorList = document.getElementById('errorList');
+                    errorList.innerHTML = '';
+                    (body.errors || [body.error || 'Unknown error']).forEach(function(err) {
+                        const li = document.createElement('li');
+                        li.textContent = err;
+                        errorList.appendChild(li);
+                    });
+                    new bootstrap.Modal(document.getElementById('errorModal')).show();
+                }
+            })
+            .catch(function(err) {
+                saveBtn.disabled = false;
+                saveBtn.innerHTML = '<i class="bi bi-save"></i> Save';
+                alert('Network error: ' + err.message);
+            });
+        });
+    }
+});
+</script>
+
+<style>
+    .tiffin-col { background: #ff9800 !important; color: white; text-align: center; min-width: 45px; }
+    .tiffin-cell { background: #fff3e0; text-align: center; }
+    .routine-edit-table select { font-size: 0.72rem; padding: 1px 3px; }
+    .period-subject { font-weight: 600; font-size: 0.8rem; color: #333; }
+    .period-teacher { font-size: 0.7rem; color: #666; }
+    .period-cell-data { min-width: 95px; text-align: center; vertical-align: middle; }
+    @media print {
+        .navbar, footer, .btn, .alert, .nav-tabs, .col-lg-4 { display: none !important; }
+        .col-lg-8 { width: 100% !important; max-width: 100% !important; }
+        .tab-pane { display: block !important; opacity: 1 !important; }
+        #manual, #upload, #substitutePane { display: none !important; }
+        .routine-edit { display: none !important; }
+        .routine-view { display: block !important; }
+    }
+</style>
+{% endblock %}
