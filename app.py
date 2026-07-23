@@ -144,6 +144,16 @@ def index():
                            sub_result=sub_result, sub_teacher=sub_teacher, sub_day=sub_day)
 
 
+@app.route("/configure")
+@login_required
+def configure():
+    """Configure Data page - manual entry and file upload."""
+    subjects = Subject.query.filter_by(user_id=current_user.id).all()
+    teachers = Teacher.query.filter_by(user_id=current_user.id).all()
+    classes = ClassSection.query.filter_by(user_id=current_user.id).all()
+    return render_template("configure.html", subjects=subjects, teachers=teachers, classes=classes)
+
+
 @app.route("/add_subject", methods=["POST"])
 @login_required
 def add_subject():
@@ -156,7 +166,7 @@ def add_subject():
             db.session.add(Subject(name=name, user_id=current_user.id))
             db.session.commit()
             flash(f"Subject '{name}' added.", "success")
-    return redirect(url_for("index"))
+    return redirect(url_for("configure"))
 
 
 @app.route("/delete_subject/<int:subject_id>")
@@ -167,7 +177,7 @@ def delete_subject(subject_id):
         db.session.delete(subject)
         db.session.commit()
         flash(f"Subject '{subject.name}' removed.", "success")
-    return redirect(url_for("index"))
+    return redirect(url_for("configure"))
 
 
 @app.route("/add_teacher", methods=["POST"])
@@ -190,7 +200,7 @@ def add_teacher():
             flash(f"Teacher '{name}' added.", "success")
     else:
         flash("Please provide teacher name and select at least one subject.", "danger")
-    return redirect(url_for("index"))
+    return redirect(url_for("configure"))
 
 
 @app.route("/delete_teacher/<int:teacher_id>")
@@ -201,7 +211,7 @@ def delete_teacher(teacher_id):
         db.session.delete(teacher)
         db.session.commit()
         flash(f"Teacher '{teacher.name}' removed.", "success")
-    return redirect(url_for("index"))
+    return redirect(url_for("configure"))
 
 
 @app.route("/add_class", methods=["POST"])
@@ -224,7 +234,7 @@ def add_class():
         flash(f"Class '{class_name}' added.", "success")
     else:
         flash("Please provide class name and sections.", "danger")
-    return redirect(url_for("index"))
+    return redirect(url_for("configure"))
 
 
 @app.route("/delete_class/<int:class_id>")
@@ -235,7 +245,7 @@ def delete_class(class_id):
         db.session.delete(cls)
         db.session.commit()
         flash(f"'{cls.full_name}' removed.", "success")
-    return redirect(url_for("index"))
+    return redirect(url_for("configure"))
 
 
 @app.route("/settings", methods=["GET", "POST"])
@@ -523,7 +533,7 @@ def edit_subject(subject_id):
 
         db.session.commit()
         flash(f"Subject renamed from '{old_name}' to '{new_name}'.", "success")
-        return redirect(url_for("index"))
+        return redirect(url_for("configure"))
 
     return render_template("edit_subject.html", subject=subject)
 
@@ -563,7 +573,7 @@ def edit_teacher(teacher_id):
 
         db.session.commit()
         flash(f"Teacher '{new_name}' updated.", "success")
-        return redirect(url_for("index"))
+        return redirect(url_for("configure"))
 
     return render_template("edit_teacher.html", teacher=teacher, subjects=subjects)
 
@@ -575,7 +585,7 @@ def upload_json():
     file = request.files.get("json_file")
     if not file or not file.filename.endswith(".json"):
         flash("Please upload a valid .json file.", "danger")
-        return redirect(url_for("index"))
+        return redirect(url_for("configure"))
 
     try:
         raw = json.load(file)
@@ -618,7 +628,7 @@ def upload_json():
         db.session.rollback()
         flash(f"Error parsing JSON: {e}", "danger")
 
-    return redirect(url_for("index"))
+    return redirect(url_for("configure"))
 
 
 @app.route("/upload_excel", methods=["POST"])
@@ -630,12 +640,12 @@ def upload_excel():
     file = request.files.get("excel_file")
     if not file:
         flash("Please select a file.", "danger")
-        return redirect(url_for("index"))
+        return redirect(url_for("configure"))
 
     filename = file.filename.lower()
     if not (filename.endswith(".xlsx") or filename.endswith(".xls") or filename.endswith(".csv")):
         flash("Please upload a valid .xlsx or .csv file.", "danger")
-        return redirect(url_for("index"))
+        return redirect(url_for("configure"))
 
     try:
         if filename.endswith(".csv"):
@@ -678,7 +688,7 @@ def upload_excel():
         db.session.rollback()
         flash(f"Error processing file: {e}", "danger")
 
-    return redirect(url_for("index"))
+    return redirect(url_for("configure"))
 
 
 def _process_teacher_subject_csv(reader):
