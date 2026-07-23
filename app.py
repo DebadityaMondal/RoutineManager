@@ -132,7 +132,7 @@ def index():
 
     # Substitute data from session
     sub_result = session.pop("substitute_result", None)
-    sub_teacher = session.pop("substitute_teacher", "")
+    sub_teachers = session.pop("substitute_teachers", [])
     sub_day = session.pop("substitute_day", "")
     teacher_names = [t.name for t in teachers]
     tiffin_after = settings.tiffin_after_period or 0
@@ -141,7 +141,7 @@ def index():
                            classes=classes, settings=settings, routine=routine,
                            day_info=day_info, max_periods=max_periods,
                            teacher_names=teacher_names, tiffin_after=tiffin_after,
-                           sub_result=sub_result, sub_teacher=sub_teacher, sub_day=sub_day)
+                           sub_result=sub_result, sub_teachers=sub_teachers, sub_day=sub_day)
 
 
 @app.route("/configure")
@@ -919,7 +919,7 @@ def save_routine():
 @app.route("/substitute", methods=["POST"])
 @login_required
 def substitute():
-    """Find substitute teachers and redirect back to home page substitute tab."""
+    """Find substitute teachers for multiple absent teachers."""
     teachers = Teacher.query.filter_by(user_id=current_user.id).all()
     settings = get_or_create_settings(current_user.id)
     gen_routine = GeneratedRoutine.query.filter_by(user_id=current_user.id).first()
@@ -929,20 +929,33 @@ def substitute():
         return redirect(url_for("index"))
 
     routine = gen_routine.routine_data
-    selected_teacher = request.form.get("absent_teacher", "").strip()
+    selected_teachers = request.form.getlist("absent_teacher")
     selected_day = request.form.get("day", "").strip()
 
-    if not selected_teacher or not selected_day:
-        flash("Please select a teacher and day.", "warning")
+    if not selected_teachers or not selected_day:
+        flash("Please select at least one teacher and a day.", "warning")
         return redirect(url_for("index", tab="substitute"))
 
-    absent_teacher_obj = next((t for t in teachers if t.name == selected_teacher), None)
-    if not absent_teacher_obj:
-        flash("Teacher not found.", "danger")
-        return redirect(url_for("index", tab="substitute"))
+    # Validate all selected teachers exist
+    teacher_map = {t.name: t for t in teachers}
+    absent_names = set()
+    all_absent_subjects = set()
+    for name in selected_teachers:
+        if name not in teacher_map:
+            flash(f"Teacher '{name}' not found.", "danger")
+            return redirect(url_for("index", tab="substitute"))
+        absent_names.add(name)
+        all_absent_subjects.update(teacher_map[name].subject_names)
 
-    absent_subjects = absent_teacher_obj.subject_names
     num_periods = settings.get_periods_for_day(selected_day)
+
+    # Compute each teacher's total periods on this day (for display)
+    teacher_day_periods: dict[str, int] = {}
+    for class_name, schedule in routine.items():
+        day_schedule = schedule.get(selected_day, [])
+        for p in day_schedule:
+            if p:
+                teacher_day_periods[p["teacher"]] = teacher_day_periods.get(p["teacher"], 0) + 1
 
     result = []
     for period_idx in range(num_periods):
@@ -954,36 +967,39 @@ def substitute():
             if period_idx < len(day_schedule) and day_schedule[period_idx]:
                 period_data = day_schedule[period_idx]
                 busy_teachers.add(period_data["teacher"])
-                if period_data["teacher"] == selected_teacher:
+                if period_data["teacher"] in absent_names:
                     absent_teacher_classes.append({
+                        "teacher": period_data["teacher"],
                         "class": class_name,
                         "subject": period_data["subject"],
                     })
 
         available_subs = []
         for teacher in teachers:
-            if teacher.name == selected_teacher:
+            if teacher.name in absent_names:
                 continue
             if teacher.name in busy_teachers:
                 continue
-            common_subjects = [s for s in teacher.subject_names if s in absent_subjects]
+            common_subjects = [s for s in teacher.subject_names if s in all_absent_subjects]
             if common_subjects:
                 available_subs.append({
                     "name": teacher.name,
                     "can_teach": common_subjects,
+                    "day_periods": teacher_day_periods.get(teacher.name, 0),
                 })
 
         free_others = []
         for teacher in teachers:
-            if teacher.name == selected_teacher:
+            if teacher.name in absent_names:
                 continue
             if teacher.name in busy_teachers:
                 continue
-            common_subjects = [s for s in teacher.subject_names if s in absent_subjects]
+            common_subjects = [s for s in teacher.subject_names if s in all_absent_subjects]
             if not common_subjects:
                 free_others.append({
                     "name": teacher.name,
                     "can_teach": teacher.subject_names,
+                    "day_periods": teacher_day_periods.get(teacher.name, 0),
                 })
 
         result.append({
@@ -995,7 +1011,7 @@ def substitute():
 
     # Store in session for display
     session["substitute_result"] = result
-    session["substitute_teacher"] = selected_teacher
+    session["substitute_teachers"] = selected_teachers
     session["substitute_day"] = selected_day
 
     return redirect(url_for("index", tab="substitute"))

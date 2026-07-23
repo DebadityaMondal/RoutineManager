@@ -13,6 +13,12 @@
                 </button>
             </li>
             <li class="nav-item" role="presentation">
+                <button class="nav-link {% if active_tab == 'teacher_routine' %}active{% endif %}" id="teacher-routine-tab" 
+                        data-bs-toggle="tab" data-bs-target="#teacherRoutinePane" type="button" role="tab">
+                    <i class="bi bi-person-lines-fill"></i> Teacher Routine
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
                 <button class="nav-link {% if active_tab == 'substitute' %}active{% endif %}" id="sub-tab" 
                         data-bs-toggle="tab" data-bs-target="#substitutePane" type="button" role="tab">
                     <i class="bi bi-person-exclamation"></i> Substitutes
@@ -121,7 +127,64 @@
                 {% endif %}
             </div>
 
-            <!-- ═══ TAB 2: SUBSTITUTES ═══ -->
+            <!-- ═══ TAB 2: TEACHER ROUTINE ═══ -->
+            <div class="tab-pane fade {% if active_tab == 'teacher_routine' %}show active{% endif %}" id="teacherRoutinePane" role="tabpanel">
+                {% if routine %}
+                <h5 class="mb-3"><i class="bi bi-person-lines-fill"></i> Teacher Engagement (Day-wise)</h5>
+                <div class="card">
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-sm mb-0">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>Teacher</th>
+                                        {% for day in settings.days_list %}
+                                        <th class="text-center">{{ day[:3] }}</th>
+                                        {% endfor %}
+                                        <th class="text-center">Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for teacher in teachers %}
+                                    {% set teacher_total = [0] %}
+                                    <tr>
+                                        <td class="fw-bold">{{ teacher.name }}{% if teacher.short_name %} <small class="text-muted">({{ teacher.short_name }})</small>{% endif %}</td>
+                                        {% for day in settings.days_list %}
+                                            {% set count = [] %}
+                                            {% for class_name, schedule in routine.items() %}
+                                                {% for p in schedule.get(day, []) %}
+                                                    {% if p and p.teacher == teacher.name %}
+                                                        {% if count.append(1) %}{% endif %}
+                                                    {% endif %}
+                                                {% endfor %}
+                                            {% endfor %}
+                                            <td class="text-center {% if count|length == 0 %}text-muted{% elif count|length >= 6 %}text-danger fw-bold{% endif %}">
+                                                {{ count|length or '—' }}
+                                            </td>
+                                            {% if teacher_total.append(teacher_total.pop() + count|length) %}{% endif %}
+                                        {% endfor %}
+                                        <td class="text-center fw-bold">{{ teacher_total[0] }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="alert alert-info mt-2">
+                    <small><i class="bi bi-info-circle"></i> Numbers show total classes/periods assigned per teacher per day across all class-sections. <span class="text-danger">Red</span> indicates heavy load (6+).</small>
+                </div>
+                {% else %}
+                <div class="card">
+                    <div class="card-body text-center py-5">
+                        <i class="bi bi-person-lines-fill" style="font-size: 3rem; color: #ccc;"></i>
+                        <p class="text-muted mt-3">Generate a routine first to view teacher engagement.</p>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- ═══ TAB 3: SUBSTITUTES ═══ -->
             <div class="tab-pane fade {% if active_tab == 'substitute' %}show active{% endif %}" id="substitutePane" role="tabpanel">
                 {% if routine %}
                 <div class="card mb-3">
@@ -132,13 +195,17 @@
                         <form method="post" action="/substitute">
                             <div class="row g-3 align-items-end">
                                 <div class="col-md-5">
-                                    <label class="form-label">Absent Teacher</label>
-                                    <select name="absent_teacher" class="form-select" required>
-                                        <option value="">-- Select Teacher --</option>
+                                    <label class="form-label">Absent Teacher(s)</label>
+                                    <div class="border rounded p-2" style="max-height: 150px; overflow-y: auto;">
                                         {% for name in teacher_names %}
-                                        <option value="{{ name }}" {% if name == sub_teacher %}selected{% endif %}>{{ name }}</option>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" name="absent_teacher" 
+                                                   value="{{ name }}" id="abs_{{ loop.index }}"
+                                                   {% if name in sub_teachers %}checked{% endif %}>
+                                            <label class="form-check-label" for="abs_{{ loop.index }}">{{ name }}</label>
+                                        </div>
                                         {% endfor %}
-                                    </select>
+                                    </div>
                                 </div>
                                 <div class="col-md-4">
                                     <label class="form-label">Day</label>
@@ -159,21 +226,21 @@
                 {% if sub_result %}
                 <div class="card">
                     <div class="card-header bg-dark text-white">
-                        <i class="bi bi-clipboard-check"></i> Substitutes for <strong>{{ sub_teacher }}</strong> on <strong>{{ sub_day }}</strong>
+                        <i class="bi bi-clipboard-check"></i> Substitutes for <strong>{{ sub_teachers | join(', ') }}</strong> on <strong>{{ sub_day }}</strong>
                     </div>
                     <div class="card-body p-0">
                         <div class="table-responsive">
                             <table class="table table-bordered table-sm mb-0">
                                 <thead class="table-dark">
-                                    <tr><th style="width:60px">Period</th><th>Absent From</th><th>Recommended</th><th>Other Free</th></tr>
+                                    <tr><th style="width:60px">Period</th><th>Absent From</th><th>Recommended (Same Subject)</th><th>Other Free</th></tr>
                                 </thead>
                                 <tbody>
                                     {% for slot in sub_result %}
                                     <tr>
                                         <td class="text-center fw-bold">{{ slot.period }}</td>
-                                        <td>{% if slot.absent_classes %}{% for cls in slot.absent_classes %}<span class="badge bg-warning text-dark">{{ cls.class }} — {{ cls.subject }}</span> {% endfor %}{% else %}<span class="text-muted">Not assigned</span>{% endif %}</td>
-                                        <td>{% if slot.substitutes %}{% for sub in slot.substitutes %}<div><strong class="text-success">{{ sub.name }}</strong> <small class="text-muted">({{ sub.can_teach | join(', ') }})</small></div>{% endfor %}{% else %}<span class="text-danger"><i class="bi bi-exclamation-triangle"></i> None</span>{% endif %}</td>
-                                        <td>{% if slot.free_others %}{% for other in slot.free_others %}<div><span class="text-muted">{{ other.name }}</span> <small>({{ other.can_teach | join(', ') }})</small></div>{% endfor %}{% else %}—{% endif %}</td>
+                                        <td>{% if slot.absent_classes %}{% for cls in slot.absent_classes %}<span class="badge bg-warning text-dark">{{ cls.teacher }}: {{ cls.class }} — {{ cls.subject }}</span> {% endfor %}{% else %}<span class="text-muted">Not assigned</span>{% endif %}</td>
+                                        <td>{% if slot.substitutes %}{% for sub in slot.substitutes %}<div><strong class="text-success">{{ sub.name }}</strong> <small class="text-muted">({{ sub.can_teach | join(', ') }})</small> <span class="badge bg-secondary">{{ sub.day_periods }} periods today</span></div>{% endfor %}{% else %}<span class="text-danger"><i class="bi bi-exclamation-triangle"></i> None</span>{% endif %}</td>
+                                        <td>{% if slot.free_others %}{% for other in slot.free_others %}<div><span class="text-muted">{{ other.name }}</span> <small>({{ other.can_teach | join(', ') }})</small> <span class="badge bg-light text-dark">{{ other.day_periods }}p</span></div>{% endfor %}{% else %}—{% endif %}</td>
                                     </tr>
                                     {% endfor %}
                                 </tbody>

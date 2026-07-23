@@ -1,4 +1,4 @@
-"""Routine generation engine with conflict-free scheduling."""
+"""Routine generation engine with conflict-free scheduling and load balancing."""
 
 import random
 from dataclasses import dataclass, field
@@ -28,15 +28,9 @@ class SchoolInputData:
     ])
     day_periods: dict[str, int] = field(default_factory=dict)
     first_period_subjects: list[str] = field(default_factory=list)
-    # Optional: class-wise subject period limits
-    # {class_key: {subject_name: periods_per_week}}
     class_subject_periods: dict[str, dict[str, int]] = field(default_factory=dict)
-    # Optional: class teacher mapping
-    # {class_key: {"teacher": name, "subject": name}}
     class_teachers: dict[str, dict[str, str]] = field(default_factory=dict)
-    # Optional: max periods a teacher can take per day (0 = no limit)
     max_teacher_periods_per_day: int = 0
-    # Optional: try to avoid same teacher in consecutive periods for a class
     avoid_consecutive: bool = False
 
     def get_periods_for_day(self, day: str) -> int:
@@ -47,12 +41,13 @@ class SchoolInputData:
 
 
 class RoutineGenerator:
-    """Generates a class-wise weekly routine ensuring no teacher conflicts."""
+    """Generates a class-wise weekly routine with load-balanced teacher assignments."""
 
     def __init__(self, data: SchoolInputData):
         self.data = data
         self.routine: dict[str, dict[str, list[Period | None]]] = {}
         self._build_subject_teacher_map()
+        self._compute_ideal_loads()
 
     def _build_subject_teacher_map(self):
         self.subject_teachers: dict[str, list[TeacherData]] = {}
@@ -60,6 +55,20 @@ class RoutineGenerator:
             self.subject_teachers[subject] = [
                 t for t in self.data.teachers if subject in t.subjects
             ]
+
+    def _compute_ideal_loads(self):
+        """Compute target weekly load per teacher for balanced distribution."""
+        total_slots = 0
+        for day in self.data.days:
+            total_slots += self.data.get_periods_for_day(day) * len(self.data.class_keys)
+
+        num_teachers = len(self.data.teachers)
+        if num_teachers > 0:
+            self.ideal_weekly = total_slots / num_teachers
+            self.ideal_daily = self.ideal_weekly / len(self.data.days) if self.data.days else 0
+        else:
+            self.ideal_weekly = 0
+            self.ideal_daily = 0
 
     def generate(self, max_attempts: int = 500) -> bool:
         for _ in range(max_attempts):
@@ -69,6 +78,12 @@ class RoutineGenerator:
 
     def _try_generate(self) -> bool:
         self.routine = {}
+        # Running counters for efficient load tracking
+        self.teacher_weekly_count: dict[str, int] = {t.name: 0 for t in self.data.teachers}
+        self.teacher_daily_count: dict[str, dict[str, int]] = {
+            t.name: {d: 0 for d in self.data.days} for t in self.data.teachers
+        }
+
         for key in self.data.class_keys:
             self.routine[key] = {}
             for day in self.data.days:
@@ -78,18 +93,18 @@ class RoutineGenerator:
         # Pre-assign class teachers to first period of every day
         if self.data.class_teachers:
             for day in self.data.days:
-                # Check for teacher conflicts in first period across classes
                 teachers_used: set[str] = set()
                 for class_key in self.data.class_keys:
                     ct = self.data.class_teachers.get(class_key)
                     if ct:
                         if ct["teacher"] in teachers_used:
-                            # Conflict: same teacher is class teacher for multiple classes
                             return False
                         teachers_used.add(ct["teacher"])
                         self.routine[class_key][day][0] = Period(
                             subject=ct["subject"], teacher=ct["teacher"]
                         )
+                        self.teacher_weekly_count[ct["teacher"]] += 1
+                        self.teacher_daily_count[ct["teacher"]][day] += 1
 
         for day in self.data.days:
             num_periods = self.data.get_periods_for_day(day)
@@ -101,7 +116,6 @@ class RoutineGenerator:
     def _assign_slot(self, day: str, period_idx: int) -> bool:
         teachers_used: set[str] = set()
 
-        # Collect teachers already assigned in this slot (e.g. class teachers)
         for class_key in self.data.class_keys:
             existing = self.routine[class_key][day][period_idx]
             if existing:
@@ -112,7 +126,6 @@ class RoutineGenerator:
 
         for idx in order:
             class_key = self.data.class_keys[idx]
-            # Skip if already assigned (class teacher pre-assignment)
             if self.routine[class_key][day][period_idx] is not None:
                 continue
             if not self._assign_one(class_key, day, period_idx, teachers_used):
@@ -142,54 +155,62 @@ class RoutineGenerator:
             if not available:
                 continue
 
-            # Apply soft constraints: prefer teachers that satisfy them
-            preferred_teachers = self._filter_soft_constraints(
-                available, class_key, day, period_idx
-            )
-
-            # Use preferred if any exist, otherwise fall back to all available (soft = flexible)
-            pick_from = preferred_teachers if preferred_teachers else available
-            teacher = random.choice(pick_from)
+            teacher = self._select_best_teacher(available, class_key, day, period_idx)
             self.routine[class_key][day][period_idx] = Period(
                 subject=subject, teacher=teacher.name
             )
             teachers_used.add(teacher.name)
+            self.teacher_weekly_count[teacher.name] += 1
+            self.teacher_daily_count[teacher.name][day] += 1
             return True
         return False
 
-    def _filter_soft_constraints(self, available: list[TeacherData],
-                                 class_key: str, day: str, period_idx: int) -> list[TeacherData]:
-        """Filter teachers by soft constraints. Returns subset that passes all; if none pass, caller uses full list."""
-        result = available
+    def _select_best_teacher(self, available: list[TeacherData],
+                             class_key: str, day: str, period_idx: int) -> TeacherData:
+        """Select the best teacher using a scoring system for load balance."""
+        if len(available) == 1:
+            return available[0]
 
-        # Soft constraint 1: max periods per day
-        if self.data.max_teacher_periods_per_day > 0:
-            daily_counts = self._teacher_daily_count(day)
-            limit = self.data.max_teacher_periods_per_day
-            result = [t for t in result if daily_counts.get(t.name, 0) < limit]
-            if not result:
-                result = available  # ignore if too restrictive
+        scored: list[tuple[float, TeacherData]] = []
 
-        # Soft constraint 2: avoid consecutive periods for same teacher in same class
-        if self.data.avoid_consecutive and period_idx > 0:
-            prev_period = self.routine[class_key][day][period_idx - 1]
-            if prev_period:
-                prev_teacher = prev_period.teacher
-                non_consecutive = [t for t in result if t.name != prev_teacher]
-                if non_consecutive:
-                    result = non_consecutive
-                # If all are the same as previous, allow it (soft constraint)
+        for t in available:
+            score = 0.0
+            weekly = self.teacher_weekly_count[t.name]
+            daily = self.teacher_daily_count[t.name][day]
 
-        return result
+            # Primary: weekly load deviation from ideal (lower is better)
+            # Score penalizes teachers who are above ideal, rewards those below
+            weekly_deviation = weekly - self.ideal_weekly
+            score += weekly_deviation * 10  # heavy weight on weekly balance
 
-    def _teacher_daily_count(self, day: str) -> dict[str, int]:
-        """Count how many periods each teacher has on a given day across all classes."""
-        count: dict[str, int] = {}
-        for class_key in self.data.class_keys:
-            for period in self.routine[class_key][day]:
-                if period:
-                    count[period.teacher] = count.get(period.teacher, 0) + 1
-        return count
+            # Secondary: daily load deviation (spread across days)
+            daily_deviation = daily - self.ideal_daily
+            score += daily_deviation * 5
+
+            # Soft constraint: max periods per day
+            if self.data.max_teacher_periods_per_day > 0:
+                if daily >= self.data.max_teacher_periods_per_day:
+                    score += 50  # strong penalty
+
+            # Soft constraint: avoid consecutive same teacher in same class
+            if self.data.avoid_consecutive and period_idx > 0:
+                prev = self.routine[class_key][day][period_idx - 1]
+                if prev and prev.teacher == t.name:
+                    score += 20  # moderate penalty
+
+            # Small random tiebreaker to avoid deterministic bias
+            score += random.uniform(0, 1)
+
+            scored.append((score, t))
+
+        # Sort ascending (lowest score = best candidate)
+        scored.sort(key=lambda x: x[0])
+
+        # Pick from the top candidates (within a small margin of the best)
+        best_score = scored[0][0]
+        top_candidates = [t for s, t in scored if s <= best_score + 3]
+
+        return random.choice(top_candidates)
 
     def _ranked_subjects(self, class_key: str, day: str) -> list[str]:
         num_periods = self.data.get_periods_for_day(day)
@@ -201,23 +222,17 @@ class RoutineGenerator:
         max_per_day = max(2, num_periods // len(self.data.subjects) + 1)
 
         weekly_count = self._weekly_subject_count(class_key)
-
-        # Get class-specific subject limits if configured
         class_limits = self.data.class_subject_periods.get(class_key, {})
 
         candidates = []
         for s in self.data.subjects:
-            # Skip if marked as not applicable (-1) for this class
             if class_limits and s in class_limits:
                 if class_limits[s] == -1:
                     continue
-            # Skip if already hit daily max
             if today_count.get(s, 0) >= max_per_day:
                 continue
-            # Skip if no teacher available
             if not self.subject_teachers.get(s):
                 continue
-            # Skip if weekly limit reached for this class+subject
             if class_limits and s in class_limits and class_limits[s] > 0:
                 if weekly_count.get(s, 0) >= class_limits[s]:
                     continue
