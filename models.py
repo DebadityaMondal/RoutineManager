@@ -79,6 +79,7 @@ class ClassSection(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     class_name = db.Column(db.String(100), nullable=False)
     section = db.Column(db.String(10), nullable=False)
+    periods_per_day = db.Column(db.Integer, default=0)  # 0 means use settings default
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
 
     __table_args__ = (db.UniqueConstraint("class_name", "section", "user_id", name="uq_class_section_user"),)
@@ -108,6 +109,10 @@ class ScheduleSettings(db.Model):
     avoid_consecutive = db.Column(db.Boolean, default=False)
     # Optional: tiffin break after which period (0 = disabled, default 4)
     tiffin_after_period = db.Column(db.Integer, default=4)
+    # Min periods per teacher per day (0 = no minimum)
+    min_teacher_periods_per_day = db.Column(db.Integer, default=2)
+    min_teacher_periods_short_day = db.Column(db.Integer, default=1)
+    short_day = db.Column(db.String(20), default="Saturday")
 
     @property
     def days_list(self):

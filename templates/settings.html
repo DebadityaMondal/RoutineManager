@@ -123,6 +123,36 @@
 
                     <hr>
 
+                    <!-- Min Teacher Periods Per Day -->
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">Min Periods Per Teacher Per Day</label>
+                        <small class="text-muted d-block mb-2">
+                            Ensure each teacher gets at least this many periods on regular days. On the short day (e.g., Saturday), a lower minimum applies. This is a soft preference — relaxed if insufficient slots.
+                        </small>
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label">Regular Days</label>
+                                <input type="number" name="min_teacher_periods_per_day" class="form-control"
+                                       value="{{ settings.min_teacher_periods_per_day or 2 }}" min="0" max="6">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Short Day</label>
+                                <input type="number" name="min_teacher_periods_short_day" class="form-control"
+                                       value="{{ settings.min_teacher_periods_short_day or 1 }}" min="0" max="6">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Short Day Name</label>
+                                <select name="short_day" class="form-select">
+                                    {% for day in settings.days_list %}
+                                    <option value="{{ day }}" {% if settings.short_day == day %}selected{% endif %}>{{ day }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <hr>
+
                     <!-- Tiffin Break -->
                     <div class="mb-4">
                         <label class="form-label fw-bold">Tiffin Break (Optional)</label>

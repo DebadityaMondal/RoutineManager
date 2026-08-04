@@ -32,9 +32,25 @@ class SchoolInputData:
     class_teachers: dict[str, dict[str, str]] = field(default_factory=dict)
     max_teacher_periods_per_day: int = 0
     avoid_consecutive: bool = False
+    # Class-specific periods per day: {class_key: periods}
+    class_periods_per_day: dict[str, int] = field(default_factory=dict)
+    # Min periods per teacher per day (soft): ensures each teacher gets at least this many
+    # On short days (like Saturday), use min_teacher_periods_short_day
+    min_teacher_periods_per_day: int = 2
+    min_teacher_periods_short_day: int = 1
+    short_day: str = "Saturday"
 
     def get_periods_for_day(self, day: str) -> int:
+        """Get the schedule-level periods for a day."""
         return self.day_periods.get(day, self.periods_per_day)
+
+    def get_periods_for_class_day(self, class_key: str, day: str) -> int:
+        """Get effective periods for a class on a day (min of class config and day settings)."""
+        day_setting = self.get_periods_for_day(day)
+        class_setting = self.class_periods_per_day.get(class_key, 0)
+        if class_setting > 0:
+            return min(class_setting, day_setting)
+        return day_setting
 
     def has_tiffin(self, day: str) -> bool:
         return self.get_periods_for_day(day) > 4
@@ -60,7 +76,8 @@ class RoutineGenerator:
         """Compute target weekly load per teacher for balanced distribution."""
         total_slots = 0
         for day in self.data.days:
-            total_slots += self.data.get_periods_for_day(day) * len(self.data.class_keys)
+            for class_key in self.data.class_keys:
+                total_slots += self.data.get_periods_for_class_day(class_key, day)
 
         num_teachers = len(self.data.teachers)
         if num_teachers > 0:
@@ -87,7 +104,7 @@ class RoutineGenerator:
         for key in self.data.class_keys:
             self.routine[key] = {}
             for day in self.data.days:
-                num_periods = self.data.get_periods_for_day(day)
+                num_periods = self.data.get_periods_for_class_day(key, day)
                 self.routine[key][day] = [None] * num_periods
 
         # Pre-assign class teachers to first period of every day
@@ -117,6 +134,9 @@ class RoutineGenerator:
         teachers_used: set[str] = set()
 
         for class_key in self.data.class_keys:
+            # Skip if this class has fewer periods than period_idx
+            if period_idx >= len(self.routine[class_key][day]):
+                continue
             existing = self.routine[class_key][day][period_idx]
             if existing:
                 teachers_used.add(existing.teacher)
@@ -126,6 +146,9 @@ class RoutineGenerator:
 
         for idx in order:
             class_key = self.data.class_keys[idx]
+            # Skip if this class doesn't have this period
+            if period_idx >= len(self.routine[class_key][day]):
+                continue
             if self.routine[class_key][day][period_idx] is not None:
                 continue
             if not self._assign_one(class_key, day, period_idx, teachers_used):
@@ -171,6 +194,12 @@ class RoutineGenerator:
         if len(available) == 1:
             return available[0]
 
+        # Determine min periods target for today
+        if day.lower() == self.data.short_day.lower():
+            min_target = self.data.min_teacher_periods_short_day
+        else:
+            min_target = self.data.min_teacher_periods_per_day
+
         scored: list[tuple[float, TeacherData]] = []
 
         for t in available:
@@ -178,10 +207,14 @@ class RoutineGenerator:
             weekly = self.teacher_weekly_count[t.name]
             daily = self.teacher_daily_count[t.name][day]
 
+            # Strong bonus for teachers below their minimum daily periods
+            # This ensures everyone gets at least the minimum
+            if daily < min_target:
+                score -= 30  # big bonus (lower score = preferred)
+
             # Primary: weekly load deviation from ideal (lower is better)
-            # Score penalizes teachers who are above ideal, rewards those below
             weekly_deviation = weekly - self.ideal_weekly
-            score += weekly_deviation * 10  # heavy weight on weekly balance
+            score += weekly_deviation * 10
 
             # Secondary: daily load deviation (spread across days)
             daily_deviation = daily - self.ideal_daily
@@ -190,13 +223,13 @@ class RoutineGenerator:
             # Soft constraint: max periods per day
             if self.data.max_teacher_periods_per_day > 0:
                 if daily >= self.data.max_teacher_periods_per_day:
-                    score += 50  # strong penalty
+                    score += 50
 
             # Soft constraint: avoid consecutive same teacher in same class
             if self.data.avoid_consecutive and period_idx > 0:
                 prev = self.routine[class_key][day][period_idx - 1]
                 if prev and prev.teacher == t.name:
-                    score += 20  # moderate penalty
+                    score += 20
 
             # Small random tiebreaker to avoid deterministic bias
             score += random.uniform(0, 1)

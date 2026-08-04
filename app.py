@@ -219,6 +219,12 @@ def delete_teacher(teacher_id):
 def add_class():
     class_name = request.form.get("class_name", "").strip()
     sections = request.form.get("sections", "").strip()
+    periods = request.form.get("class_periods_per_day", "0").strip()
+    try:
+        periods_per_day = int(periods) if periods else 0
+    except ValueError:
+        periods_per_day = 0
+
     if class_name and sections:
         for section in sections.split(","):
             section = section.strip()
@@ -228,7 +234,8 @@ def add_class():
                 ).first()
                 if not existing:
                     db.session.add(ClassSection(
-                        class_name=class_name, section=section, user_id=current_user.id
+                        class_name=class_name, section=section,
+                        periods_per_day=periods_per_day, user_id=current_user.id
                     ))
         db.session.commit()
         flash(f"Class '{class_name}' added.", "success")
@@ -298,6 +305,21 @@ def update_settings():
             settings.tiffin_after_period = int(tiffin_val) if tiffin_val else 0
         except ValueError:
             settings.tiffin_after_period = 0
+
+        # Min teacher periods per day
+        min_tp = request.form.get("min_teacher_periods_per_day", "2").strip()
+        try:
+            settings.min_teacher_periods_per_day = int(min_tp) if min_tp else 2
+        except ValueError:
+            settings.min_teacher_periods_per_day = 2
+
+        min_tp_short = request.form.get("min_teacher_periods_short_day", "1").strip()
+        try:
+            settings.min_teacher_periods_short_day = int(min_tp_short) if min_tp_short else 1
+        except ValueError:
+            settings.min_teacher_periods_short_day = 1
+
+        settings.short_day = request.form.get("short_day", "Saturday").strip()
 
         db.session.commit()
         flash("Settings updated.", "success")
@@ -806,6 +828,9 @@ def generate():
                 "subject": rec.subject_name,
             }
 
+    # Class-specific periods per day
+    class_ppd = {c.full_name: c.periods_per_day for c in classes if c.periods_per_day > 0}
+
     input_data = SchoolInputData(
         subjects=[s.name for s in subjects],
         teachers=[TeacherData(name=t.name, subjects=t.subject_names) for t in teachers],
@@ -818,6 +843,10 @@ def generate():
         class_teachers=class_teachers_map,
         max_teacher_periods_per_day=settings.max_teacher_periods_per_day or 0,
         avoid_consecutive=settings.avoid_consecutive,
+        class_periods_per_day=class_ppd,
+        min_teacher_periods_per_day=settings.min_teacher_periods_per_day or 2,
+        min_teacher_periods_short_day=settings.min_teacher_periods_short_day or 1,
+        short_day=settings.short_day or "Saturday",
     )
 
     gen = RoutineGenerator(input_data)
