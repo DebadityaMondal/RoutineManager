@@ -170,6 +170,14 @@ class RoutineGenerator:
             weekly_count = self._weekly_subject_count(class_key)
             candidates.sort(key=lambda s: weekly_count.get(s, 0))
 
+        # Track which teacher+subject combos are already used today in this class
+        today_teacher_subjects = set()  # (teacher_name, subject_name)
+        today_teachers_in_class = set()  # teacher_name
+        for period in self.routine[class_key][day]:
+            if period:
+                today_teacher_subjects.add((period.teacher, period.subject))
+                today_teachers_in_class.add(period.teacher)
+
         for subject in candidates:
             available = [
                 t for t in self.subject_teachers.get(subject, [])
@@ -178,7 +186,16 @@ class RoutineGenerator:
             if not available:
                 continue
 
-            teacher = self._select_best_teacher(available, class_key, day, period_idx)
+            # Hard constraint: exclude teachers who already teach THIS subject in THIS class today
+            not_repeated = [
+                t for t in available
+                if (t.name, subject) not in today_teacher_subjects
+            ]
+
+            # Use filtered list if possible, fall back to all available if none left
+            pick_pool = not_repeated if not_repeated else available
+
+            teacher = self._select_best_teacher(pick_pool, class_key, day, period_idx, today_teachers_in_class)
             self.routine[class_key][day][period_idx] = Period(
                 subject=subject, teacher=teacher.name
             )
@@ -189,10 +206,14 @@ class RoutineGenerator:
         return False
 
     def _select_best_teacher(self, available: list[TeacherData],
-                             class_key: str, day: str, period_idx: int) -> TeacherData:
+                             class_key: str, day: str, period_idx: int,
+                             today_teachers_in_class: set[str] = None) -> TeacherData:
         """Select the best teacher using a scoring system for load balance."""
         if len(available) == 1:
             return available[0]
+
+        if today_teachers_in_class is None:
+            today_teachers_in_class = set()
 
         # Determine min periods target for today
         if day.lower() == self.data.short_day.lower():
@@ -230,6 +251,10 @@ class RoutineGenerator:
                 prev = self.routine[class_key][day][period_idx - 1]
                 if prev and prev.teacher == t.name:
                     score += 20
+
+            # Soft constraint: penalize same teacher appearing again in this class today
+            if t.name in today_teachers_in_class:
+                score += 15  # prefer a different teacher for variety
 
             # Small random tiebreaker to avoid deterministic bias
             score += random.uniform(0, 1)

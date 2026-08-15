@@ -4,6 +4,11 @@ School Routine Generator - Flask Web Application with MySQL & User Auth
 
 import json
 import io
+import os
+from dotenv import load_dotenv
+
+load_dotenv()  # Load .env file
+
 from flask import Flask, render_template, request, redirect, url_for, flash, session
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 
@@ -883,29 +888,46 @@ def save_routine():
     settings = get_or_create_settings(current_user.id)
     teachers = Teacher.query.filter_by(user_id=current_user.id).all()
     subjects = Subject.query.filter_by(user_id=current_user.id).all()
+    classes = ClassSection.query.filter_by(user_id=current_user.id).all()
 
     teacher_names = {t.name for t in teachers}
     subject_names = {s.name for s in subjects}
-    # Build teacher->subjects map for validation
     teacher_subject_map = {t.name: set(t.subject_names) for t in teachers}
+
+    # Build class periods config: {class_full_name: periods_per_day}
+    class_ppd = {}
+    for c in classes:
+        if c.periods_per_day and c.periods_per_day > 0:
+            class_ppd[c.full_name] = c.periods_per_day
 
     errors = []
 
     # Validate each day/period slot
     for class_name, schedule in routine.items():
         for day, periods in schedule.items():
-            num_expected = settings.get_periods_for_day(day)
-            if len(periods) != num_expected:
-                errors.append(f"{class_name} / {day}: Expected {num_expected} periods, got {len(periods)}.")
+            day_setting = settings.get_periods_for_day(day)
+            class_setting = class_ppd.get(class_name, 0)
+            # Effective periods for this class on this day
+            if class_setting > 0:
+                num_expected = min(class_setting, day_setting)
+            else:
+                num_expected = day_setting
+
+            if len(periods) != day_setting:
+                # Allow the routine to have day_setting columns (some may be empty for shorter classes)
+                pass
 
             for idx, period in enumerate(periods):
                 if period is None:
-                    errors.append(f"{class_name} / {day} / Period {idx+1}: Empty slot not allowed.")
+                    # Allow empty if this period is beyond the class's configured limit
+                    if idx >= num_expected:
+                        continue  # valid empty — class doesn't have this period
+                    # Within the class's period count — still allow empty (user chose to leave it blank)
                     continue
                 subj = period.get("subject", "")
                 tchr = period.get("teacher", "")
                 if not subj or not tchr:
-                    errors.append(f"{class_name} / {day} / Period {idx+1}: Subject and teacher are required.")
+                    errors.append(f"{class_name} / {day} / Period {idx+1}: Both subject and teacher are required if slot is filled.")
                     continue
                 if subj not in subject_names:
                     errors.append(f"{class_name} / {day} / Period {idx+1}: Unknown subject '{subj}'.")

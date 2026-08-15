@@ -79,7 +79,7 @@
                                             {% endif %}
                                             {% if i <= dinfo.periods %}
                                                 {% set p = periods[i-1] if (i-1) < periods|length else None %}
-                                                <td class="p-1 period-cell-data">
+                                                <td class="p-1 period-cell-data" {% if p %}data-teacher="{{ p.teacher }}"{% endif %}>
                                                     <div class="routine-view">
                                                         {% if p %}
                                                         <div class="period-subject">{{ p.subject }}</div>
@@ -130,25 +130,32 @@
             <!-- ═══ TAB 2: TEACHER ROUTINE ═══ -->
             <div class="tab-pane fade {% if active_tab == 'teacher_routine' %}show active{% endif %}" id="teacherRoutinePane" role="tabpanel">
                 {% if routine %}
-                <h5 class="mb-3"><i class="bi bi-person-lines-fill"></i> Teacher Engagement (Day-wise)</h5>
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="mb-0"><i class="bi bi-person-lines-fill"></i> Teacher Engagement (Day-wise)</h5>
+                    <div>
+                        <button id="clearHighlightsBtn" class="btn btn-outline-secondary btn-sm">
+                            <i class="bi bi-x-circle"></i> Clear Highlights
+                        </button>
+                    </div>
+                </div>
                 <div class="card">
                     <div class="card-body p-0">
                         <div class="table-responsive">
-                            <table class="table table-bordered table-sm mb-0">
+                            <table class="table table-bordered table-sm mb-0" id="teacherRoutineTable">
                                 <thead class="table-dark">
                                     <tr>
-                                        <th>Teacher</th>
+                                        <th class="sortable" data-col="0" style="cursor:pointer">Teacher <i class="bi bi-arrow-down-up"></i></th>
                                         {% for day in settings.days_list %}
-                                        <th class="text-center">{{ day[:3] }}</th>
+                                        <th class="text-center sortable" data-col="{{ loop.index }}" style="cursor:pointer">{{ day[:3] }} <i class="bi bi-arrow-down-up"></i></th>
                                         {% endfor %}
-                                        <th class="text-center">Total</th>
+                                        <th class="text-center sortable" data-col="{{ settings.days_list|length + 1 }}" style="cursor:pointer">Total <i class="bi bi-arrow-down-up"></i></th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {% for teacher in teachers %}
                                     {% set teacher_total = [0] %}
-                                    <tr>
-                                        <td class="fw-bold">{{ teacher.name }}{% if teacher.short_name %} <small class="text-muted">({{ teacher.short_name }})</small>{% endif %}</td>
+                                    <tr class="teacher-row" data-teacher="{{ teacher.name }}" style="cursor:pointer">
+                                        <td class="fw-bold teacher-name-cell">{{ teacher.name }}{% if teacher.short_name %} <small class="text-muted">({{ teacher.short_name }})</small>{% endif %}</td>
                                         {% for day in settings.days_list %}
                                             {% set count = [] %}
                                             {% for class_name, schedule in routine.items() %}
@@ -158,12 +165,12 @@
                                                     {% endif %}
                                                 {% endfor %}
                                             {% endfor %}
-                                            <td class="text-center {% if count|length == 0 %}text-muted{% elif count|length >= 6 %}text-danger fw-bold{% endif %}">
+                                            <td class="text-center {% if count|length == 0 %}text-muted{% elif count|length >= 6 %}text-danger fw-bold{% endif %}" data-value="{{ count|length }}">
                                                 {{ count|length or '—' }}
                                             </td>
                                             {% if teacher_total.append(teacher_total.pop() + count|length) %}{% endif %}
                                         {% endfor %}
-                                        <td class="text-center fw-bold">{{ teacher_total[0] }}</td>
+                                        <td class="text-center fw-bold" data-value="{{ teacher_total[0] }}">{{ teacher_total[0] }}</td>
                                     </tr>
                                     {% endfor %}
                                 </tbody>
@@ -172,7 +179,7 @@
                     </div>
                 </div>
                 <div class="alert alert-info mt-2">
-                    <small><i class="bi bi-info-circle"></i> Numbers show total classes/periods assigned per teacher per day across all class-sections. <span class="text-danger">Red</span> indicates heavy load (6+).</small>
+                    <small><i class="bi bi-info-circle"></i> Click column headers to sort. Click up to <strong>2 teachers</strong> to highlight their slots in different colors in the Routine tab for easy comparison and rebalancing. <span class="text-danger">Red</span> = heavy load (6+).</small>
                 </div>
                 {% else %}
                 <div class="card">
@@ -376,6 +383,153 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 </script>
+<script>
+// ─── Teacher Routine: Sorting ───
+document.addEventListener('DOMContentLoaded', function() {
+    const table = document.getElementById('teacherRoutineTable');
+    if (!table) return;
+
+    let sortCol = -1;
+    let sortAsc = true;
+
+    table.querySelectorAll('th.sortable').forEach(function(th) {
+        th.addEventListener('click', function() {
+            const col = parseInt(this.dataset.col);
+            if (sortCol === col) {
+                sortAsc = !sortAsc;
+            } else {
+                sortCol = col;
+                sortAsc = true;
+            }
+
+            const tbody = table.querySelector('tbody');
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+
+            rows.sort(function(a, b) {
+                let aVal, bVal;
+                if (col === 0) {
+                    aVal = a.cells[0].textContent.trim().toLowerCase();
+                    bVal = b.cells[0].textContent.trim().toLowerCase();
+                    return sortAsc ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+                } else {
+                    aVal = parseInt(a.cells[col].dataset.value || a.cells[col].textContent.trim()) || 0;
+                    bVal = parseInt(b.cells[col].dataset.value || b.cells[col].textContent.trim()) || 0;
+                    return sortAsc ? aVal - bVal : bVal - aVal;
+                }
+            });
+
+            rows.forEach(function(row) { tbody.appendChild(row); });
+
+            // Update sort indicators
+            table.querySelectorAll('th.sortable i').forEach(function(icon) {
+                icon.className = 'bi bi-arrow-down-up';
+            });
+            const icon = this.querySelector('i');
+            icon.className = sortAsc ? 'bi bi-arrow-up' : 'bi bi-arrow-down';
+        });
+    });
+
+    // ─── Teacher Routine: Click to highlight TWO teachers in Routine tab ───
+    let selectedTeachers = []; // max 2
+
+    // Clear highlights button
+    const clearBtn = document.getElementById('clearHighlightsBtn');
+    if (clearBtn) {
+        clearBtn.addEventListener('click', function() {
+            selectedTeachers = [];
+            table.querySelectorAll('.teacher-row').forEach(r => r.classList.remove('table-active', 'teacher-sel-1', 'teacher-sel-2'));
+            clearAllHighlights();
+        });
+    }
+
+    table.querySelectorAll('.teacher-row').forEach(function(row) {
+        row.addEventListener('click', function() {
+            const teacher = this.dataset.teacher;
+            const idx = selectedTeachers.indexOf(teacher);
+
+            if (idx !== -1) {
+                // Deselect this teacher
+                selectedTeachers.splice(idx, 1);
+                this.classList.remove('table-active', 'teacher-sel-1', 'teacher-sel-2');
+            } else {
+                if (selectedTeachers.length >= 2) {
+                    // Remove the first selected teacher
+                    const removed = selectedTeachers.shift();
+                    table.querySelectorAll(`.teacher-row[data-teacher="${removed}"]`).forEach(
+                        r => r.classList.remove('table-active', 'teacher-sel-1', 'teacher-sel-2')
+                    );
+                }
+                selectedTeachers.push(teacher);
+            }
+
+            // Update row highlights
+            table.querySelectorAll('.teacher-row').forEach(r => r.classList.remove('table-active', 'teacher-sel-1', 'teacher-sel-2'));
+            if (selectedTeachers[0]) {
+                table.querySelector(`.teacher-row[data-teacher="${selectedTeachers[0]}"]`).classList.add('table-active', 'teacher-sel-1');
+            }
+            if (selectedTeachers[1]) {
+                table.querySelector(`.teacher-row[data-teacher="${selectedTeachers[1]}"]`).classList.add('table-active', 'teacher-sel-2');
+            }
+
+            // Determine which teacher has higher load (gets red), lower gets green
+            highlightTeachers();
+
+            // Switch to Routine tab
+            if (selectedTeachers.length > 0) {
+                const routineTab = document.getElementById('routine-tab');
+                if (routineTab) routineTab.click();
+            }
+        });
+    });
+
+    function getTeacherTotal(teacherName) {
+        const row = table.querySelector(`.teacher-row[data-teacher="${teacherName}"]`);
+        if (!row) return 0;
+        const cells = row.querySelectorAll('td[data-value]');
+        const lastCell = cells[cells.length - 1];
+        return parseInt(lastCell?.dataset.value || '0');
+    }
+
+    function highlightTeachers() {
+        clearAllHighlights();
+        if (selectedTeachers.length === 0) return;
+
+        // With 2 teachers: higher load = red (highlight-high), lower = green (highlight-low)
+        // With 1 teacher: just use green
+        let teacher1 = selectedTeachers[0];
+        let teacher2 = selectedTeachers[1];
+        let class1 = 'teacher-highlight-low';  // green by default for single
+        let class2 = 'teacher-highlight-low';
+
+        if (teacher2) {
+            const total1 = getTeacherTotal(teacher1);
+            const total2 = getTeacherTotal(teacher2);
+            if (total1 >= total2) {
+                class1 = 'teacher-highlight-high';  // red for higher
+                class2 = 'teacher-highlight-low';   // green for lower
+            } else {
+                class1 = 'teacher-highlight-low';
+                class2 = 'teacher-highlight-high';
+            }
+        }
+
+        document.querySelectorAll('.period-cell-data[data-teacher]').forEach(function(cell) {
+            if (teacher1 && cell.dataset.teacher === teacher1) {
+                cell.classList.add(class1);
+            }
+            if (teacher2 && cell.dataset.teacher === teacher2) {
+                cell.classList.add(class2);
+            }
+        });
+    }
+
+    function clearAllHighlights() {
+        document.querySelectorAll('.teacher-highlight-high, .teacher-highlight-low').forEach(function(cell) {
+            cell.classList.remove('teacher-highlight-high', 'teacher-highlight-low');
+        });
+    }
+});
+</script>
 <style>
     .tiffin-col { background: #ff9800 !important; color: white; text-align: center; min-width: 45px; }
     .tiffin-cell { background: #fff3e0; text-align: center; }
@@ -383,6 +537,12 @@ document.addEventListener('DOMContentLoaded', function() {
     .period-subject { font-weight: 600; font-size: 0.8rem; color: #333; }
     .period-teacher { font-size: 0.7rem; color: #666; }
     .period-cell-data { min-width: 95px; text-align: center; vertical-align: middle; }
+    .teacher-highlight-high { background: #f8d7da !important; border: 2px solid #dc3545 !important; }
+    .teacher-highlight-low { background: #d4edda !important; border: 2px solid #28a745 !important; }
+    .teacher-row:hover { background: #f0f0f0; }
+    .teacher-row.table-active { font-weight: bold; }
+    .teacher-row.teacher-sel-1 { background: #f8d7da !important; }
+    .teacher-row.teacher-sel-2 { background: #d4edda !important; }
     @media print {
         .navbar, footer, .btn, .alert, .nav-tabs, .col-lg-4 { display: none !important; }
         .col-lg-8 { width: 100% !important; max-width: 100% !important; }

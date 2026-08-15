@@ -23,6 +23,7 @@ env/
 # Environment variables
 .env
 *.env
+.env.local
 
 # OS files
 Thumbs.db
