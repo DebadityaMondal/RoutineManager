@@ -181,6 +181,27 @@
                 <div class="alert alert-info mt-2">
                     <small><i class="bi bi-info-circle"></i> Click column headers to sort. Click up to <strong>2 teachers</strong> to highlight their slots in different colors in the Routine tab for easy comparison and rebalancing. <span class="text-danger">Red</span> = heavy load (6+).</small>
                 </div>
+
+                <!-- Teacher Detail Routine View -->
+                <div class="card mt-3">
+                    <div class="card-header bg-secondary text-white">
+                        <i class="bi bi-calendar-person"></i> Teacher Class Routine (Detail View)
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <select id="teacherDetailSelect" class="form-select" style="max-width: 300px;">
+                                <option value="">-- Select Teacher --</option>
+                                {% for teacher in teachers %}
+                                <option value="{{ teacher.name }}">{{ teacher.name }}{% if teacher.short_name %} ({{ teacher.short_name }}){% endif %}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div id="teacherDetailView">
+                            <p class="text-muted text-center">Select a teacher to view their detailed routine.</p>
+                        </div>
+                    </div>
+                </div>
+
                 {% else %}
                 <div class="card">
                     <div class="card-body text-center py-5">
@@ -318,6 +339,12 @@
 
 {% block scripts %}
 <script>
+// Routine data for JS use
+const routineData = {{ routine | tojson | safe if routine else '{}' }};
+const daysList = {{ settings.days_list | tojson | safe }};
+const maxPeriods = {{ max_periods }};
+const tiffinAfter = {{ tiffin_after }};
+
 document.addEventListener('DOMContentLoaded', function() {
     const editBtn = document.getElementById('editRoutineBtn');
     const saveBtn = document.getElementById('saveRoutineBtn');
@@ -526,6 +553,77 @@ document.addEventListener('DOMContentLoaded', function() {
     function clearAllHighlights() {
         document.querySelectorAll('.teacher-highlight-high, .teacher-highlight-low').forEach(function(cell) {
             cell.classList.remove('teacher-highlight-high', 'teacher-highlight-low');
+        });
+    }
+
+    // ─── Teacher Detail Routine View ───
+    const detailSelect = document.getElementById('teacherDetailSelect');
+    const detailView = document.getElementById('teacherDetailView');
+
+    if (detailSelect && detailView) {
+        detailSelect.addEventListener('change', function() {
+            const teacher = this.value;
+            if (!teacher || !routineData || Object.keys(routineData).length === 0) {
+                detailView.innerHTML = '<p class="text-muted text-center">Select a teacher to view their detailed routine.</p>';
+                return;
+            }
+
+            // Build teacher's routine: day -> period -> {class, subject}
+            let html = '<div class="table-responsive"><table class="table table-bordered table-sm">';
+            html += '<thead class="table-dark"><tr><th>Day</th>';
+            for (let i = 1; i <= maxPeriods; i++) {
+                if (tiffinAfter > 0 && i === tiffinAfter + 1) {
+                    html += '<th class="text-center" style="background:#ff9800;color:#fff;min-width:40px;">T</th>';
+                }
+                html += '<th class="text-center">P' + i + '</th>';
+            }
+            html += '</tr></thead><tbody>';
+
+            daysList.forEach(function(day) {
+                html += '<tr><td class="fw-bold">' + day.substring(0, 3) + '</td>';
+                // Find what this teacher is doing each period
+                const dayPeriods = maxPeriods;
+                for (let i = 1; i <= dayPeriods; i++) {
+                    if (tiffinAfter > 0 && i === tiffinAfter + 1) {
+                        html += '<td class="text-center" style="background:#fff3e0;">🍱</td>';
+                    }
+                    let found = null;
+                    for (const [className, schedule] of Object.entries(routineData)) {
+                        const periods = schedule[day] || [];
+                        if ((i - 1) < periods.length && periods[i - 1]) {
+                            if (periods[i - 1].teacher === teacher) {
+                                found = { class: className, subject: periods[i - 1].subject };
+                                break;
+                            }
+                        }
+                    }
+                    if (found) {
+                        html += '<td class="text-center p-1" style="background:#e8f5e9;">';
+                        html += '<div style="font-weight:600;font-size:0.8rem;">' + found.subject + '</div>';
+                        html += '<div style="font-size:0.7rem;color:#666;">' + found.class + '</div>';
+                        html += '</td>';
+                    } else {
+                        html += '<td class="text-center text-muted">—</td>';
+                    }
+                }
+                html += '</tr>';
+            });
+
+            html += '</tbody></table></div>';
+
+            // Count summary
+            let totalPeriods = 0;
+            for (const day of daysList) {
+                for (const [className, schedule] of Object.entries(routineData)) {
+                    const periods = schedule[day] || [];
+                    for (const p of periods) {
+                        if (p && p.teacher === teacher) totalPeriods++;
+                    }
+                }
+            }
+            html += '<small class="text-muted">Total: <strong>' + totalPeriods + ' periods/week</strong></small>';
+
+            detailView.innerHTML = html;
         });
     }
 });
