@@ -40,6 +40,7 @@ class Subject(db.Model):
     name = db.Column(db.String(100), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     is_first_period = db.Column(db.Boolean, default=False)
+    priority = db.Column(db.String(10), default="medium")  # high, medium, low
 
     __table_args__ = (db.UniqueConstraint("name", "user_id", name="uq_subject_user"),)
 

@@ -163,14 +163,17 @@ def configure():
 @login_required
 def add_subject():
     name = request.form.get("subject", "").strip()
+    priority = request.form.get("subject_priority", "medium").strip()
+    if priority not in ("high", "medium", "low"):
+        priority = "medium"
     if name:
         existing = Subject.query.filter_by(name=name, user_id=current_user.id).first()
         if existing:
             flash(f"Subject '{name}' already exists.", "warning")
         else:
-            db.session.add(Subject(name=name, user_id=current_user.id))
+            db.session.add(Subject(name=name, user_id=current_user.id, priority=priority))
             db.session.commit()
-            flash(f"Subject '{name}' added.", "success")
+            flash(f"Subject '{name}' added with {priority} priority.", "success")
     return redirect(url_for("configure"))
 
 
@@ -550,6 +553,11 @@ def edit_subject(subject_id):
         old_name = subject.name
         subject.name = new_name
 
+        # Update priority
+        new_priority = request.form.get("priority", "medium").strip()
+        if new_priority in ("high", "medium", "low"):
+            subject.priority = new_priority
+
         # Update teacher_subjects references
         TeacherSubject.query.filter(
             TeacherSubject.teacher_id.in_(
@@ -836,6 +844,9 @@ def generate():
     # Class-specific periods per day
     class_ppd = {c.full_name: c.periods_per_day for c in classes if c.periods_per_day > 0}
 
+    # Subject priorities
+    subject_priority_map = {s.name: (s.priority or "medium") for s in subjects}
+
     input_data = SchoolInputData(
         subjects=[s.name for s in subjects],
         teachers=[TeacherData(name=t.name, subjects=t.subject_names) for t in teachers],
@@ -846,6 +857,7 @@ def generate():
         first_period_subjects=settings.first_period_subjects,
         class_subject_periods=class_subject_periods,
         class_teachers=class_teachers_map,
+        subject_priorities=subject_priority_map,
         max_teacher_periods_per_day=settings.max_teacher_periods_per_day or 0,
         avoid_consecutive=settings.avoid_consecutive,
         class_periods_per_day=class_ppd,

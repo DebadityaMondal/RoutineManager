@@ -34,17 +34,29 @@
                     <div class="card-body">
                         <form action="/add_subject" method="post" class="d-flex gap-2 mb-3">
                             <input type="text" name="subject" class="form-control" placeholder="Enter subject name" required>
+                            <select name="subject_priority" class="form-select" style="max-width: 120px;">
+                                <option value="high">High</option>
+                                <option value="medium" selected>Medium</option>
+                                <option value="low">Low</option>
+                            </select>
                             <button type="submit" class="btn btn-primary">Add</button>
                         </form>
                         <div>
                             {% for subject in subjects %}
-                            <span class="badge bg-primary badge-subject">{{ subject.name }}
+                            <span class="badge {% if subject.priority == 'high' %}bg-danger{% elif subject.priority == 'low' %}bg-secondary{% else %}bg-primary{% endif %} badge-subject">
+                                {{ subject.name }}
+                                <small class="opacity-75">[{{ subject.priority or 'medium' }}]</small>
                                 <a href="/edit_subject/{{ subject.id }}" class="text-white ms-1" title="Edit"><i class="bi bi-pencil"></i></a>
                                 <a href="/delete_subject/{{ subject.id }}" class="text-white ms-1" title="Delete"><i class="bi bi-x-circle"></i></a>
                             </span>
                             {% endfor %}
                             {% if not subjects %}<span class="text-muted">No subjects added yet.</span>{% endif %}
                         </div>
+                        <small class="text-muted mt-2 d-block">
+                            <span class="badge bg-danger">High</span> = first half periods
+                            <span class="badge bg-primary">Medium</span> = any except last
+                            <span class="badge bg-secondary">Low</span> = last period preferred
+                        </small>
                     </div>
                 </div>
 

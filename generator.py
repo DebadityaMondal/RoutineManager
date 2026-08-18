@@ -30,6 +30,8 @@ class SchoolInputData:
     first_period_subjects: list[str] = field(default_factory=list)
     class_subject_periods: dict[str, dict[str, int]] = field(default_factory=dict)
     class_teachers: dict[str, dict[str, str]] = field(default_factory=dict)
+    # Subject priority: {subject_name: "high"|"medium"|"low"}
+    subject_priorities: dict[str, str] = field(default_factory=dict)
     max_teacher_periods_per_day: int = 0
     avoid_consecutive: bool = False
     # Class-specific periods per day: {class_key: periods}
@@ -170,6 +172,11 @@ class RoutineGenerator:
             weekly_count = self._weekly_subject_count(class_key)
             candidates.sort(key=lambda s: weekly_count.get(s, 0))
 
+            # Apply subject priority as soft ordering
+            if self.data.subject_priorities:
+                num_periods_today = len(self.routine[class_key][day])
+                candidates = self._apply_priority_sort(candidates, period_idx, num_periods_today)
+
         # Track which teacher+subject combos are already used today in this class
         today_teacher_subjects = set()  # (teacher_name, subject_name)
         today_teachers_in_class = set()  # teacher_name
@@ -269,6 +276,36 @@ class RoutineGenerator:
         top_candidates = [t for s, t in scored if s <= best_score + 3]
 
         return random.choice(top_candidates)
+
+    def _apply_priority_sort(self, candidates: list[str], period_idx: int,
+                             num_periods: int) -> list[str]:
+        """
+        Soft reorder candidates based on subject priority and current period position.
+        - High priority: preferred in first half (periods 0 to mid-1)
+        - Medium priority: preferred in first to second-last period
+        - Low priority: preferred in last period
+        """
+        if not candidates or num_periods <= 1:
+            return candidates
+
+        mid = num_periods // 2
+        last_idx = num_periods - 1
+
+        def priority_score(subject: str) -> int:
+            prio = self.data.subject_priorities.get(subject, "medium")
+            if prio == "high":
+                # Prefer first half; penalize if in second half
+                return 0 if period_idx < mid else 2
+            elif prio == "low":
+                # Prefer last period; penalize if not last
+                return 0 if period_idx >= last_idx else 2
+            else:  # medium
+                # Prefer anywhere except last period
+                return 0 if period_idx < last_idx else 1
+
+        # Stable sort: subjects that fit this period position come first
+        candidates_sorted = sorted(candidates, key=priority_score)
+        return candidates_sorted
 
     def _ranked_subjects(self, class_key: str, day: str) -> list[str]:
         num_periods = self.data.get_periods_for_day(day)
